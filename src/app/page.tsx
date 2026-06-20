@@ -14,15 +14,14 @@ function MuseApp() {
   const [activeTab, setActiveTab] = useState("editor"); // editor | library | settings
   const [storiesList, setStoriesList] = useState<any[]>([]);
   
-  // Custom states quản lý bong bóng Messenger di động kiểu Apple
+  // Các trạng thái quản lý Bong bóng Chat head di động chuẩn Messenger
   const [greeting, setGreeting] = useState("Chào ngày mới");
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [aiStatusVisible, setAiStatusVisible] = useState(false);
-  const [isStatusMinimized, setIsStatusMinimized] = useState(true); // Mặc định thu nhỏ thành bong bóng di động
+  const [isStatusMinimized, setIsStatusMinimized] = useState(true);
   const [aiSteps, setAiSteps] = useState<string[]>([]);
   const [isIdle, setIsIdle] = useState(false);
 
-  // Điều khiển vị trí bong bóng bằng Framer Motion Animation
   const bubbleControls = useAnimation();
   const dragConstraintsRef = useRef<HTMLDivElement>(null);
 
@@ -30,15 +29,20 @@ function MuseApp() {
   useEffect(() => {
     const hr = new Date().getHours();
     const name = "XIENGG XIENGG";
-    if (hr >= 4 && hr < 11) setGreeting(`Một buổi sáng dịu lành, ${name}`);
-    else if (hr >= 11 && hr < 14) setGreeting(`Bắt đầu buổi trưa thôi, ${name}`);
-    else if (hr >= 14 && hr < 18) setGreeting(`Một chiều nhẹ nhàng nhé, ${name}`);
-    else setGreeting(`Buổi tối thật bình yên, ${name}`);
+    if (hr >= 4 && hr < 11) {
+      setGreeting(`Một buổi sáng dịu lành, ${name}`);
+    } else if (hr >= 11 && hr < 14) {
+      setGreeting(`Bắt đầu buổi trưa thôi, ${name}`);
+    } else if (hr >= 14 && hr < 18) {
+      setGreeting(`Một chiều nhẹ nhàng nhé, ${name}`);
+    } else {
+      setGreeting(`Buổi tối thật bình yên, ${name}`);
+    }
   }, []);
 
   // 2. Tự động mờ 50% sau 3 giây không có hoạt động chạm hoặc xử lý
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let timer: any;
     if (aiStatusVisible && !loading) {
       timer = setTimeout(() => {
         setIsIdle(true);
@@ -46,10 +50,12 @@ function MuseApp() {
     } else {
       setIsIdle(false);
     }
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [aiStatusVisible, loading]);
 
-  // Đồng bộ dữ liệu
+  // 同 bộ Google Drive khi đăng nhập thành công
   useEffect(() => {
     if (session) {
       loadDataFromDrive();
@@ -100,17 +106,16 @@ function MuseApp() {
     await saveToDrive();
   };
 
-  // 3. Xử lý logic trượt nép vào lề màn hình khi người dùng thả tay kéo bong bóng
+  // 3. Xử lý trượt nép vào lề trái hoặc phải màn hình mượt mà
   const handleDragEnd = (event: any, info: any) => {
     setIsIdle(false);
-    const screenWidth = window.innerWidth;
+    const screenWidth = typeof window !== "undefined" ? window.innerWidth : 375;
     const finalX = info.point.x;
     
-    // Thuật toán: Nếu tọa độ thả tay gần lề trái hơn, trượt về lề trái. Ngược lại trượt về lề phải.
     if (finalX < screenWidth / 2) {
       bubbleControls.start({ x: 16, transition: { type: "spring", stiffness: 300, damping: 20 } });
     } else {
-      bubbleControls.start({ x: screenWidth - 76, transition: "spring" });
+      bubbleControls.start({ x: screenWidth - 76, transition: { type: "spring", stiffness: 300, damping: 20 } });
     }
   };
 
@@ -122,7 +127,7 @@ function MuseApp() {
   const handleGenerate = async (moodType?: string) => {
     if (loading) return;
     setAiSteps([]);
-    setIsStatusMinimized(false); // Tự động mở rộng giao diện khi AI đang làm việc
+    setIsStatusMinimized(false);
     setAiStatusVisible(true);
     setLoading(true);
     setIsIdle(false);
@@ -145,7 +150,6 @@ function MuseApp() {
       }
 
       if (data.text) {
-        // Nối chữ mượt mà chuẩn xác không khoảng cách thừa
         const spacer = currentStory.endsWith(" ") || data.text.startsWith(" ") ? "" : " ";
         const fullNewStory = currentStory ? `${currentStory}${spacer}${data.text}` : data.text;
         
@@ -154,7 +158,6 @@ function MuseApp() {
         setAiSteps((prev) => [...prev, "✨ Đăng tải thành công."]);
         saveToDrive(fullNewStory);
 
-        // Tự động thu nhỏ thành bong bóng sau 2 giây hoàn tất
         setTimeout(() => {
           setIsStatusMinimized(true);
         }, 2000);
@@ -169,7 +172,7 @@ function MuseApp() {
   return (
     <div ref={dragConstraintsRef} className="min-h-screen bg-[#0A0A0C] text-[#F5F5F7] flex flex-col font-sans antialiased overflow-hidden relative">
       
-      {/* Top Header */}
+      {/* Header */}
       <header className={`sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0C]/75 border-b border-appleBorder px-6 py-4 flex justify-between items-center transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-2 pointer-events-none" : "opacity-100"}`}>
         <div>
           <span className="text-[10px] text-zinc-500 font-medium tracking-wider uppercase">{greeting}</span>
@@ -249,7 +252,7 @@ function MuseApp() {
         </AnimatePresence>
       </main>
 
-      {/* Floating Prompt Bar & Quick Moods (Focus Mode Compatible) */}
+      {/* Floating Prompt Bar */}
       {activeTab === "editor" && (
         <div className={`fixed bottom-24 left-0 right-0 px-6 z-40 transition-all duration-700 ${isEditorFocused ? "opacity-5 transform translate-y-2 pointer-events-none" : "opacity-100"}`}>
           <div className="max-w-md mx-auto space-y-3">
@@ -307,14 +310,14 @@ function MuseApp() {
         </button>
       </nav>
 
-      {/* 6. Bong bóng di động thông minh Messenger (Hỗ trợ kéo rê, nép lề trái/phải, mờ 50% sau 3s) */}
+      {/* Bong bóng di động Messenger thông minh */}
       <AnimatePresence>
         {aiStatusVisible && (
           <motion.div
             layout
-            drag // Kích hoạt tính năng kéo rê tự do
+            drag
             dragElastic={0.1}
-            dragConstraints={dragConstraintsRef} // Giới hạn kéo rê bên trong màn hình
+            dragConstraints={dragConstraintsRef}
             onDragStart={triggerBubbleActive}
             onDragEnd={handleDragEnd}
             animate={bubbleControls}
@@ -326,10 +329,6 @@ function MuseApp() {
               cursor: "grab",
               touchAction: "none"
             }}
-            variants={{
-              active: { opacity: 1 },
-              idle: { opacity: 0.5 }
-            }}
             className={`border border-appleBorder shadow-2xl backdrop-blur-xl overflow-hidden flex flex-col justify-between transition-opacity duration-700 ${
               isIdle ? "opacity-50" : "opacity-100"
             } ${
@@ -339,7 +338,7 @@ function MuseApp() {
             }`}
           >
             {isStatusMinimized ? (
-              // Trạng thái thu nhỏ: Nép sát lề, nhấp nháy hồng tinh tế
+              // Trạng thái thu nhỏ: Nép sát lề, nhấp nháy nhè nhẹ
               <div 
                 onClick={() => {
                   triggerBubbleActive();
@@ -356,7 +355,7 @@ function MuseApp() {
                 </svg>
               </div>
             ) : (
-              // Trạng thái mở rộng đầy đủ: Hiển thị minh bạch tiến trình
+              // Trạng thái mở rộng: Hiển thị tiến trình chi tiết
               <div className="space-y-3 pointer-events-auto">
                 <div className="flex justify-between items-center pb-2 border-b border-appleBorder">
                   <span className="text-[11px] font-semibold text-rose-300 flex items-center gap-1.5">
@@ -364,7 +363,7 @@ function MuseApp() {
                     Trợ lý AI Muse
                   </span>
                   <div className="flex items-center space-x-1">
-                    {/* Nút thu nhỏ hướng lên trên đúng thiết kế */}
+                    {/* Mũi tên hướng lên trên đúng yêu cầu */}
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
@@ -376,7 +375,7 @@ function MuseApp() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
                       </svg>
                     </button>
-                    {/* Nút đóng hoàn toàn */}
+                    {/* Nút đóng */}
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
@@ -391,4 +390,26 @@ function MuseApp() {
                   </div>
                 </div>
                 
-                <div className="space-y-1.5 text-[10px] text-zinc-400 font-mono max-h-[120px] overflow-y-auto leading-relaxed pr
+                <div className="space-y-1.5 text-[10px] text-zinc-400 font-mono max-h-[120px] overflow-y-auto leading-relaxed pr-1 no-scrollbar">
+                  {aiSteps.map((step, idx) => (
+                    <motion.div key={idx} initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }}>
+                      {step}
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <SessionProvider>
+      <MuseApp />
+    </SessionProvider>
+  );
+                    }
