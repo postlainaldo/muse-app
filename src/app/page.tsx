@@ -10,6 +10,14 @@ interface StoryBlock {
   timestamp: string;
 }
 
+export default function Page() {
+  return (
+    <SessionProvider>
+      <MuseApp />
+    </SessionProvider>
+  );
+}
+
 function MuseApp() {
   const { data: session } = useSession();
   const [blocks, setBlocks] = useState<StoryBlock[]>([]);
@@ -50,14 +58,14 @@ function MuseApp() {
     }
   }, []);
 
-  // 2. Tải dữ liệu từ Google Drive
+  // 2. Tải dữ liệu từ Google Drive sau khi liên kết
   useEffect(() => {
     if (session) {
       loadDataFromDrive();
     }
   }, [session]);
 
-  // 3. Tự động lưu trữ ngầm lên Drive sau khi có bất kỳ thay đổi nào
+  // 3. Tự động sao lưu ngầm lên Google Drive (Debounce 1.5 giây sau khi ngừng gõ)
   useEffect(() => {
     if (!session || blocks.length === 0) return;
     const delayDebounceFn = setTimeout(() => {
@@ -130,14 +138,13 @@ function MuseApp() {
       .finally(() => setLoadingSuggestions(false));
   }
 
-  // 4. Gọi Gemini 3.5 Flash biên dịch và phóng tác truyện trực tiếp
+  // Gọi Gemini 3.5 Flash biên dịch và phóng tác truyện trực tiếp
   function handleGenerate(moodType?: string) {
     const promptToSend = moodType || userPrompt;
     if (!promptToSend.trim() || loading) return;
 
     setLoading(true);
 
-    // Tạo ngay khối chat hiển thị lời thoại thô của bạn (giống Google AI Studio)
     const userBlock: StoryBlock = {
       id: `user_${Date.now()}`,
       type: "user",
@@ -226,7 +233,7 @@ function MuseApp() {
         </div>
       </header>
 
-      {/* Main Content (Chạy kết xuất phẳng hoàn mỹ) */}
+      {/* Main Content */}
       <main className="flex-1 overflow-y-auto px-6 py-6 pb-60 space-y-5">
         
         {/* TAB THƯ VIỆN */}
@@ -417,4 +424,4 @@ function MuseApp() {
                 }}
               />
               <button onClick={() => handleGenerate()} className="bg-rose-400 text-black p-3 rounded-full hover:bg-rose-300 transition-all active:scale-95">
-                <svg className="w-4 h-4" fill="none
+                <svg 
