@@ -89,7 +89,8 @@ export async function POST(req: Request) {
       - WorkerD: Rich world-building details, inner thoughts, philosophical depth.
       Return ONLY a JSON array, e.g., ["WorkerA", "WorkerB"]`;
 
-      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      // Cập nhật tên mô hình thành gemini-2.5-flash ổn định để tránh lỗi 404
+      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -97,17 +98,7 @@ export async function POST(req: Request) {
           generationConfig: { responseMimeType: "application/json" }
         })
       });
-
-      if (!geminiRes.ok) {
-        const geminiErr = await geminiRes.text();
-        throw new Error(`Gemini Master AI Error: ${geminiRes.status} - ${geminiErr}`);
-      }
-
       const geminiData = await geminiRes.json();
-      if (!geminiData.candidates || geminiData.candidates.length === 0) {
-        throw new Error("Gemini API không trả về kết quả phân tích.");
-      }
-
       let decisionText = geminiData.candidates[0].content.parts[0].text;
       decisionText = decisionText.replace(/```json|```/g, "").trim();
       
@@ -148,9 +139,10 @@ export async function POST(req: Request) {
       const p2 = callLLM(WORKERS[w2].url, process.env.OPENROUTER_API_KEY, WORKERS[w2].model, [{ role: "user", content: workerPrompt }]);
       const [res1, res2] = await Promise.all([p1, p2]);
 
+      // Cập nhật tên mô hình biên tập đánh giá thành gemini-2.5-flash
       const evalPrompt = `Current story context: "${currentStory}"\n\nPrompt/mood instruction: "${fullPrompt}"\n\nSelect and combine the best, most emotional parts of these two continuations into a single, perfectly flowing paragraph:\nContinuation 1 (from ${WORKERS[w1].name}): "${res1}"\nContinuation 2 (from ${WORKERS[w2].name}): "${res2}"\n\nOutput only the finalized story paragraph with no extra dialogue or explanations.`;
 
-      const evalRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+      const evalRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: [{ text: evalPrompt }] }] })
@@ -172,4 +164,4 @@ export async function POST(req: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Lỗi xử lý nội bộ" }, { status: 500 });
   }
-}
+      }
