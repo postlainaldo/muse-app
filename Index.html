@@ -1,1 +1,379 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Muse - Không gian sáng tác</title>
+    
+    <!-- CẤU HÌNH PWA INLINE (Bỏ qua file manifest.json độc lập) -->
+    <link rel="manifest" href="data:application/manifest+json,{
+      &quot;name&quot;: &quot;Muse - Khong gian sang tac&quot;,
+      &quot;short_name&quot;: &quot;Muse&quot;,
+      &quot;start_url&quot;: &quot;.&quot;,
+      &quot;display&quot;: &quot;standalone&quot;,
+      &quot;background_color&quot;: &quot;#0A0A0C&quot;,
+      &quot;theme_color&quot;: &quot;#0A0A0C&quot;,
+      &quot;icons&quot;: [
+        {
+          &quot;src&quot;: &quot;https://cdn-icons-png.flaticon.com/512/3850/3850285.png&quot;,
+          &quot;sizes&quot;: &quot;512x512&quot;,
+          &quot;type&quot;: &quot;image/png&quot;
+        }
+      ]
+    }">
 
+    <!-- TỐI ƯU GIAO DIỆN APP CHO CHẾ ĐỘ NATIVE TRÊN IOS (APPLE) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Muse">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3850/3850285.png">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Identity Services (Chỉ giữ lại thư viện đăng nhập bảo mật gọn nhẹ) -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0A0A0C;
+            color: #F5F5F7;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .serif-font {
+            font-family: 'Playfair Display', serif;
+        }
+        .page-transition {
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .apple-blur {
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            background-color: rgba(10, 10, 12, 0.75);
+        }
+        /* Hiệu ứng mờ đi khi gõ chữ (Focus Mode) */
+        .focus-hide {
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        .focus-active {
+            opacity: 0.03;
+            pointer-events: none;
+            transform: translateY(-5px);
+        }
+        .focus-active-bottom {
+            opacity: 0.03;
+            pointer-events: none;
+            transform: translateY(5px);
+        }
+        /* Khắc phục thanh cuộn trên di động */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="overflow-hidden h-screen flex flex-col justify-between safe-top safe-bottom">
+
+    <!-- TOP HEADER -->
+    <header id="app-header" class="apple-blur border-b border-[#1C1C1E] px-5 py-4 flex items-center justify-between sticky top-0 z-40 focus-hide">
+        <div class="flex flex-col">
+            <span id="girlfriend-greeting" class="text-[10px] text-zinc-500 font-medium tracking-wider uppercase">Chào ngày mới</span>
+            <span class="serif-font text-xl font-semibold tracking-wide text-white flex items-center gap-1.5">
+                Muse <span class="text-rose-400 text-xs">♥</span>
+            </span>
+        </div>
+        <div class="flex items-center space-x-2">
+            <button id="sync-btn" onclick="syncWithDrive()" class="p-2 text-zinc-400 hover:text-white transition-colors relative">
+                <i data-lucide="cloud-off" id="sync-icon" class="w-5 h-5"></i>
+                <span id="sync-dot" class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-400 hidden animate-pulse"></span>
+            </button>
+            <button onclick="switchPage('settings')" class="p-2 text-zinc-400 hover:text-white transition-colors">
+                <i data-lucide="sliders" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN AREA -->
+    <main class="flex-1 overflow-y-auto relative p-5 pb-28">
+        
+        <!-- PAGE 1: TRANG CHỦ / DANH SÁCH TRUYỆN -->
+        <div id="page-home" class="page-transition space-y-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-[11px] font-semibold tracking-widest text-zinc-500 uppercase">Tác phẩm của bạn</h2>
+                <button onclick="createNewStory()" class="text-xs text-rose-300 flex items-center gap-1 bg-[#1C1C1E] px-3 py-1.5 rounded-full border border-[#2C2C2E]">
+                    <i data-lucide="plus" class="w-3.5 h-3.5"></i> Tạo mới
+                </button>
+            </div>
+            <div id="story-list" class="space-y-3"></div>
+        </div>
+
+        <!-- PAGE 2: TRANG BIÊN TẬP (WRITER) -->
+        <div id="page-writer" class="page-transition hidden space-y-5">
+            <button id="back-btn" onclick="switchPage('home')" class="text-xs text-zinc-400 flex items-center gap-1 py-1 focus-hide">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i> Quay lại tủ truyện
+            </button>
+            <input type="text" id="story-title" placeholder="Đặt tên cho tác phẩm..." 
+                   class="w-full bg-transparent text-2xl font-semibold serif-font border-none outline-none focus:ring-0 text-white placeholder-zinc-800">
+            <textarea id="story-content" placeholder="Ghi lại những dòng cảm xúc, ý tưởng của bạn ở đây..." 
+                      class="w-full h-80 bg-transparent text-sm leading-relaxed border-none outline-none focus:ring-0 text-zinc-300 placeholder-zinc-700 resize-none"></textarea>
+        </div>
+
+        <!-- PAGE 3: CÀI ĐẶT -->
+        <div id="page-settings" class="page-transition hidden space-y-6">
+            <div class="flex items-center gap-2">
+                <button onclick="switchPage('home')" class="p-1 text-zinc-400 hover:text-white"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+                <h2 class="text-base font-medium text-white">Cài đặt nâng qua</h2>
+            </div>
+            <div class="bg-[#121214] p-5 rounded-2xl border border-[#1C1C1E] space-y-3">
+                <h3 class="text-sm font-medium text-white flex items-center gap-2">
+                    <i data-lucide="cloud" class="w-4 h-4 text-rose-300"></i> Sao lưu đám mây
+                </h3>
+                <p class="text-xs text-zinc-500 leading-relaxed">Đồng bộ tác phẩm trực tiếp lên Google Drive cá nhân. Nhấn kết nối khi đổi thiết bị để tải lại tất cả truyện về máy.</p>
+                <div id="gdrive-status" class="text-xs text-zinc-400">Trạng thái: Chưa liên kết</div>
+                <button id="auth-btn" onclick="handleAuthClick()" class="w-full bg-white text-black text-xs font-semibold py-3 rounded-xl active:scale-95 transition-all">
+                    Đăng nhập bằng Google
+                </button>
+            </div>
+            <div class="text-center text-[10px] text-zinc-600">Chế tác với ♥ dành riêng cho bạn.</div>
+        </div>
+
+    </main>
+
+    <!-- BOTTOM FLOATING CONTROLS -->
+    <div id="writer-controls" class="hidden fixed bottom-0 left-0 right-0 p-5 bg-gradient-to-t from-[#0A0A0C] via-[#0A0A0C]/95 to-transparent z-30 focus-hide">
+        <div class="max-w-md mx-auto space-y-3">
+            <div id="quick-moods" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                <button onclick="triggerQuickMood('lãng mạn')" class="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-[#2C2C2E] text-xs px-3.5 py-1.5 rounded-full hover:border-rose-400/50 hover:text-rose-200 transition-all">🌸 Thêm lãng mạn</button>
+                <button onclick="triggerQuickMood('tự nhiên')" class="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-[#2C2C2E] text-xs px-3.5 py-1.5 rounded-full hover:border-rose-400/50 hover:text-rose-200 transition-all">✨ Viết tiếp tự nhiên</button>
+                <button onclick="triggerQuickMood('nội tâm')" class="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-[#2C2C2E] text-xs px-3.5 py-1.5 rounded-full hover:border-rose-400/50 hover:text-rose-200 transition-all">💭 Đậm chất nội tâm</button>
+                <button onclick="triggerQuickMood('kịch tính')" class="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-[#2C2C2E] text-xs px-3.5 py-1.5 rounded-full hover:border-rose-400/50 hover:text-rose-200 transition-all">🎭 Tạo kịch tính</button>
+            </div>
+            <div class="flex gap-2.5 items-center">
+                <input type="text" id="ai-prompt" placeholder="Bạn muốn câu chuyện tiếp theo như thế nào..." 
+                       class="flex-1 bg-[#121214] text-xs px-4.5 py-3.5 rounded-full border border-[#2C2C2E] focus:outline-none focus:border-rose-400/50 text-zinc-200 placeholder-zinc-600 transition-colors">
+                <button onclick="triggerAiCoWriter()" class="bg-rose-400 text-black p-3.5 rounded-full hover:bg-rose-300 transition-all flex items-center justify-center shadow-lg active:scale-95">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HỘP THOẠI TRẠNG THÁI AI TRÊN CÙNG (Khắc phục triệt để lỗi bị che trên Mobile) -->
+    <div id="ai-status-overlay" class="hidden fixed inset-0 flex items-center justify-center p-6 z-50 backdrop-blur-md bg-black/60">
+        <div class="bg-[#1C1C1E] border border-[#2C2C2E] rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl flex flex-col max-h-[80vh]">
+            <div class="flex justify-between items-center pb-2 border-b border-[#2C2C2E]">
+                <span class="text-sm font-medium text-rose-300 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
+                    Trợ lý AI Muse
+                </span>
+                <button onclick="hideAiStatus()" class="text-zinc-500 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="ai-steps" class="flex-1 overflow-y-auto space-y-2.5 text-xs text-zinc-400 font-mono pr-1 max-h-[45vh] leading-relaxed">
+                <!-- Tiến trình xử lý thời gian thực sẽ hiển thị tại đây -->
+            </div>
+            <button onclick="hideAiStatus()" class="w-full bg-[#2C2C2E] text-zinc-300 text-xs font-medium py-3 rounded-xl hover:bg-[#3A3A3C] transition-colors">
+                Đóng hộp thoại
+            </button>
+        </div>
+    </div>
+
+    <!-- CORE JAVASCRIPT LOGIC -->
+    <script>
+        /* =======================================================
+           CẤU HÌNH DÀNH RIÊNG CHO BẠN GÁI
+           ======================================================= */
+        const GIRLFRIEND_NAME = "XIENGG XIENGG";
+        const DEFAULT_GEMINI_KEY = "AQ.Ab8RN6L_Pcq6LXyWmVJODgzf-_KPM9U5uibK96QW-LW1eYXoPQ"; // Lưu ý: Cần đúng định dạng AIzaSy...
+        const DEFAULT_OPENROUTER_KEY = "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";
+        const DEFAULT_GOOGLE_CLIENT_ID = "AIzaSyAf_e4JC5bjoXIxZQjWZhpZ9yANYrNsbgc";
+
+        let stories = [];
+        let currentStoryId = null;
+        let googleToken = null;
+        let driveFileId = null;
+        let focusTimeout = null;
+
+        const AGENT_MODELS = [
+            { id: "meta-llama/llama-3-8b-instruct:free", name: "Llama 3 8B (Meta)" },
+            { id: "google/gemma-2-9b-it:free", name: "Gemma 2 9B (Google)" },
+            { id: "qwen/qwen-2-7b-instruct:free", name: "Qwen 2 7B (Alibaba)" },
+            { id: "mistralai/mistral-7b-instruct:free", name: "Mistral 7B (Mistral)" },
+            { id: "microsoft/phi-3-medium-128k-instruct:free", name: "Phi 3 Medium (Microsoft)" },
+            { id: "openchat/openchat-7b:free", name: "OpenChat 7B (OpenChat)" },
+            { id: "nousresearch/hermes-3-llama-3-8b:free", name: "Hermes 3 (Nous)" },
+            { id: "meta-llama/llama-3-70b-instruct:free", name: "Llama 3 70B (Meta)" },
+            { id: "qwen/qwen-2-72b-instruct:free", name: "Qwen 2 72B (Alibaba)" },
+            { id: "google/gemini-2.0-flash-exp", name: "Gemini Flash (Google Studio)" }
+        ];
+
+        window.addEventListener('load', () => {
+            lucide.createIcons();
+            setPersonalizedGreeting();
+            loadStories();
+            setupFocusMode();
+            checkSavedGoogleSession(); // Tự động khôi phục đăng nhập Drive khi đổi máy
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('PWA Service Worker đã được cài đặt!'))
+                    .catch(err => console.error('Lỗi khởi động PWA:', err));
+            }
+        });
+
+        function setPersonalizedGreeting() {
+            const hr = new Date().getHours();
+            let greeting = "Chào ngày mới";
+            if (hr >= 4 && hr < 11) greeting = `Một buổi sáng dịu lành, ${GIRLFRIEND_NAME}`;
+            else if (hr >= 11 && hr < 14) greeting = `Bắt đầu buổi trưa thôi, ${GIRLFRIEND_NAME}`;
+            else if (hr >= 14 && hr < 18) greeting = `Một chiều nhẹ nhàng nhé, ${GIRLFRIEND_NAME}`;
+            else greeting = `Buổi tối thật bình yên, ${GIRLFRIEND_NAME}`;
+            document.getElementById('girlfriend-greeting').innerText = greeting;
+        }
+
+        function setupFocusMode() {
+            const textarea = document.getElementById('story-content');
+            const header = document.getElementById('app-header');
+            const backBtn = document.getElementById('back-btn');
+            const footer = document.getElementById('writer-controls');
+
+            textarea.addEventListener('focus', () => {
+                header.classList.add('focus-active');
+                if (backBtn) backBtn.classList.add('focus-active');
+                footer.classList.add('focus-active-bottom');
+            });
+
+            textarea.addEventListener('blur', () => {
+                header.classList.remove('focus-active');
+                if (backBtn) backBtn.classList.remove('focus-active');
+                footer.classList.remove('focus-active-bottom');
+            });
+
+            textarea.addEventListener('input', () => {
+                header.classList.add('focus-active');
+                if (backBtn) backBtn.classList.add('focus-active');
+                footer.classList.add('focus-active-bottom');
+
+                clearTimeout(focusTimeout);
+                focusTimeout = setTimeout(() => {
+                    header.classList.remove('focus-active');
+                    if (backBtn) backBtn.classList.remove('focus-active');
+                    footer.classList.remove('focus-active-bottom');
+                }, 1500);
+            });
+        }
+
+        function switchPage(pageId) {
+            document.getElementById('page-home').classList.add('hidden');
+            document.getElementById('page-writer').classList.add('hidden');
+            document.getElementById('page-settings').classList.add('hidden');
+            document.getElementById('writer-controls').classList.add('hidden');
+
+            if (pageId === 'home') {
+                document.getElementById('page-home').classList.remove('hidden');
+                renderStoryList();
+                if (googleToken) syncWithDrive(); // Đồng bộ ngầm khi quay về trang danh sách
+            } else if (pageId === 'writer') {
+                document.getElementById('page-writer').classList.remove('hidden');
+                document.getElementById('writer-controls').classList.remove('hidden');
+            } else if (pageId === 'settings') {
+                document.getElementById('page-settings').classList.remove('hidden');
+            }
+        }
+
+        function loadStories() {
+            const localStories = localStorage.getItem('muse_stories');
+            if (localStories) stories = JSON.parse(localStories);
+            renderStoryList();
+        }
+
+        function renderStoryList() {
+            const listContainer = document.getElementById('story-list');
+            listContainer.innerHTML = '';
+            
+            if (stories.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center text-zinc-600 py-12 text-xs space-y-2">
+                        <i data-lucide="pen-tool" class="w-8 h-8 mx-auto text-zinc-700"></i>
+                        <p>Nơi lưu giữ những ý tưởng ngọt ngào.<br>Hãy tạo tác phẩm đầu tiên nhé.</p>
+                    </div>`;
+                lucide.createIcons();
+                return;
+            }
+
+            stories.forEach(story => {
+                const item = document.createElement('div');
+                item.className = "bg-[#121214] border border-[#1C1C1E] p-4 rounded-2xl flex justify-between items-center active:scale-[0.98] transition-all";
+                item.onclick = () => openStory(story.id);
+                item.innerHTML = `
+                    <div class="space-y-1 truncate flex-1 pr-4">
+                        <h4 class="font-medium text-zinc-100 text-sm truncate">${story.title || 'Tác phẩm chưa đặt tên'}</h4>
+                        <p class="text-[10px] text-zinc-500">${new Date(story.updatedAt).toLocaleDateString('vi-VN')} lúc ${new Date(story.updatedAt).toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})}</p>
+                    </div>
+                    <button onclick="event.stopPropagation(); deleteStory('${story.id}')" class="text-zinc-600 hover:text-rose-300 p-2 transition-colors">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                `;
+                listContainer.appendChild(item);
+            });
+            lucide.createIcons();
+        }
+
+        function createNewStory() {
+            const newStory = {
+                id: 'story_' + Date.now(),
+                title: '',
+                content: '',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+            stories.unshift(newStory);
+            saveStoriesLocally();
+            openStory(newStory.id);
+        }
+
+        function openStory(id) {
+            currentStoryId = id;
+            const story = stories.find(s => s.id === id);
+            if (story) {
+                document.getElementById('story-title').value = story.title;
+                document.getElementById('story-content').value = story.content;
+                document.getElementById('story-title').oninput = autoSaveStory;
+                document.getElementById('story-content').oninput = autoSaveStory;
+                switchPage('writer');
+            }
+        }
+
+        function autoSaveStory() {
+            const story = stories.find(s => s.id === currentStoryId);
+            if (story) {
+                story.title = document.getElementById('story-title').value;
+                story.content = document.getElementById('story-content').value;
+                story.updatedAt = new Date().toISOString();
+                saveStoriesLocally();
+            }
+        }
+
+        function saveStoriesLocally() {
+            localStorage.setItem('muse_stories', JSON.stringify(stories));
+        }
+
+        function deleteStory(id) {
+            if (confirm("Xóa bỏ vĩnh viễn tác phẩm này?")) {
+                stories = stories.filter(s => s.id !== id);
+                saveStoriesLocally();
+                renderStoryList();
+                if (googleToken) syncWithDrive();
+            }
+        }
+
+        /* =======================================================
+           HỆ THỐNG
