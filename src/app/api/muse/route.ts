@@ -4,10 +4,10 @@ import { google } from "googleapis";
 import { authOptions } from "../auth/[...nextauth]/route";
 
 const WORKERS: Record<string, { name: string; url: string; model: string }> = {
-  WorkerA: { name: "Llama 3.3 70B", url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" },
-  WorkerB: { name: "Gemma 2 9B", url: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemma-2-9b-it:free" },
-  WorkerC: { name: "Mistral Nemo", url: "https://openrouter.ai/api/v1/chat/completions", model: "mistralai/mistral-nemo:free" },
-  WorkerD: { name: "Qwen 2.5 14B", url: "https://openrouter.ai/api/v1/chat/completions", model: "qwen/qwen-2.5-14b-instruct:free" },
+  WorkerA: { name: "Llama 3.3 70B (Siêu tốc)", url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" },
+  WorkerB: { name: "Gemma 2 9B (Google)", url: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemma-2-9b-it:free" },
+  WorkerC: { name: "Mistral Nemo (Pháp)", url: "https://openrouter.ai/api/v1/chat/completions", model: "mistralai/mistral-nemo:free" },
+  WorkerD: { name: "Qwen 2.5 14B (Alibaba)", url: "https://openrouter.ai/api/v1/chat/completions", model: "qwen/qwen-2.5-14b-instruct:free" },
 };
 
 async function callLLM(apiUrl: string, apiKey: string, model: string, messages: any[]) {
@@ -22,7 +22,7 @@ async function callLLM(apiUrl: string, apiKey: string, model: string, messages: 
 
 export async function POST(req: Request) {
   const session: any = await getServerSession(authOptions);
-  const { action, currentStory, userPrompt, stories } = await req.json();
+  const { action, currentStory, userPrompt, mood, stories } = await req.json();
 
   const getDrive = () => {
     if (!session?.accessToken) throw new Error("Unauthorized");
@@ -32,9 +32,83 @@ export async function POST(req: Request) {
   };
 
   try {
-    // 1. Thao tác Lưu trữ dữ liệu lên Google Drive
     if (action === "save") {
       const drive = getDrive();
+      const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
+      const files = resList.data.files || [];
+      const media = { mimeType: "application/json", body: JSON.stringify(stories) };
+      if (files.length > 0) {
+        await drive.files.update({ fileId: files[0].id!, media });
+      } else {
+        await drive.files.create({ requestBody: { name: "muse_data.json", mimeType: "application/json" }, media });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "load") {
+      const drive = getDrive();
+      const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
+      const files = resList.data.files || [];
+      if (files.length === 0) return NextResponse.json({ stories: [] });
+      const resContent = await drive.files.get({ fileId: files[0].id!, alt: "media" });
+      return NextResponse.json({ stories: resContent.data });
+    }
+
+    if (action === "generate") {
+      // Kết hợp tâm trạng (mood) vào lời gọi ý tưởng của người viết
+      const fullPrompt = mood ? `Viết tiếp với văn phong phong cách: [${mood}]. Ý tưởng bổ sung: ${userPrompt || "Viết tiếp một cách tự nhiên."}` : userPrompt;
+
+      // 1. Master AI (Gemini 1.5 Flash) tiến hành phân bổ công việc
+      const routerPrompt = `You are the Master AI coordinator. Analyze this story context: "${currentStory}" and the prompt: "${fullPrompt}".
+      Select EXACTLY 2 workers best suited for this section from:
+      - WorkerA: Intense drama, emotional tension, character dialogues.
+      - WorkerB: Beautiful scenery descriptions, deep romantic/emotional imagery, slow atmosphere.
+      - WorkerC: Suspenseful moments, sudden twists, logical actions, mystery.
+      - WorkerD: Rich world-building details, inner thoughts, philosophical depth.
+      Return ONLY a JSON array, e.g., ["WorkerA", "WorkerB"]`;
+
+      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: routerPrompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
+      const geminiData = await geminiRes.json();
+      let decisionText = geminiData.candidates[0].content.parts[0].text;
+      decisionText = decisionText.replace(/```json|```/g, "").trim();
+      const decision = JSON.parse(decisionText);
+      const [w1, w2] = decision as ("WorkerA" | "WorkerB" | "WorkerC" | "WorkerD")[];
+
+      // 2. Chạy đồng thời 2 Worker được chỉ định
+      const workerPrompt = `Context: ${currentStory}. Please continue writing the story naturally (about 80-120 words) matching this prompt/mood requirement: "${fullPrompt}".`;
+      
+      const p1 = callLLM(WORKERS[w1].url, w1 === "WorkerA" ? process.env.GROQ_API_KEY! : process.env.OPENROUTER_API_KEY!, WORKERS[w1].model, [{ role: "user", content: workerPrompt }]);
+      const p2 = callLLM(WORKERS[w2].url, w2 === "WorkerA" ? process.env.GROQ_API_KEY! : process.env.OPENROUTER_API_KEY!, WORKERS[w2].model, [{ role: "user", content: workerPrompt }]);
+      const [res1, res2] = await Promise.all([p1, p2]);
+
+      // 3. Master AI thẩm định, hợp nhất và tối ưu hóa câu từ
+      const evalPrompt = `Current story context: "${currentStory}"\n\nPrompt/mood instruction: "${fullPrompt}"\n\nSelect and combine the best, most emotional parts of these two continuations into a single, perfectly flowing paragraph:\nContinuation 1 (from ${WORKERS[w1].name}): "${res1}"\nContinuation 2 (from ${WORKERS[w2].name}): "${res2}"\n\nOutput only the finalized story paragraph with no extra dialogue or explanations.`;
+
+      const evalRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: evalPrompt }] }] })
+      });
+      const evalData = await evalRes.json();
+      
+      return NextResponse.json({
+        text: evalData.candidates[0].content.parts[0].text,
+        selectedWorkers: [WORKERS[w1].name, WORKERS[w2].name]
+      });
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}      const drive = getDrive();
       const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
       const files = resList.data.files || [];
       const media = { mimeType: "application/json", body: JSON.stringify(stories) };
