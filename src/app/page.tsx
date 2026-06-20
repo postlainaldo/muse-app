@@ -13,12 +13,12 @@ interface StoryBlock {
 export default function Page() {
   return (
     <SessionProvider>
-      <MuseApp />
+      <MuseContent />
     </SessionProvider>
   );
 }
 
-function MuseApp() {
+function MuseContent() {
   const { data: session } = useSession();
   const [blocks, setBlocks] = useState<StoryBlock[]>([]);
   const [title, setTitle] = useState("Truyện chưa đặt tên");
@@ -28,13 +28,10 @@ function MuseApp() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("editor"); // editor | library | settings
   const [storiesList, setStoriesList] = useState<any[]>([]);
-  
-  // Trạng thái giao diện
   const [greeting, setGreeting] = useState("Chào ngày mới");
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [isSystemCollapsed, setIsSystemCollapsed] = useState(true);
 
-  // Gợi ý sáng tác động
   const [suggestions, setSuggestions] = useState<string[]>([
     "🌸 Đi sâu vào nội tâm nhân vật",
     "✨ Tạo ra một cuộc gặp gỡ bất ngờ",
@@ -58,10 +55,24 @@ function MuseApp() {
     }
   }, []);
 
-  // 2. Tải dữ liệu từ Google Drive sau khi liên kết
+  // 2. Tải dữ liệu từ Google Drive sau khi liên kết thành công
   useEffect(() => {
     if (session) {
-      loadDataFromDrive();
+      fetch("/api/muse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "load" })
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.stories && data.stories.length > 0) {
+            setStoriesList(data.stories);
+            setBlocks(data.stories[0].blocks || []);
+            setTitle(data.stories[0].title || "Truyện chưa đặt tên");
+            setSystemInstructions(data.stories[0].systemInstructions || "");
+          }
+        })
+        .catch((err) => console.error(err));
     }
   }, [session]);
 
@@ -69,64 +80,33 @@ function MuseApp() {
   useEffect(() => {
     if (!session || blocks.length === 0) return;
     const delayDebounceFn = setTimeout(() => {
-      saveToDrive(blocks, systemInstructions);
+      setSaving(true);
+      const combinedContent = blocks.map((b) => b.text).join("\n\n");
+      const newStoryList = [{ 
+        title, 
+        content: combinedContent, 
+        systemInstructions, 
+        blocks 
+      }];
+      setStoriesList(newStoryList);
+
+      fetch("/api/muse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", stories: newStoryList })
+      })
+        .catch((err) => console.error(err))
+        .finally(() => setSaving(false));
     }, 1500);
     return () => clearTimeout(delayDebounceFn);
-  }, [blocks, systemInstructions, title]);
+  }, [blocks, systemInstructions, title, session]);
 
-  function loadDataFromDrive() {
-    fetch("/api/muse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "load" })
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.stories && data.stories.length > 0) {
-          setStoriesList(data.stories);
-          setBlocks(data.stories[0].blocks || []);
-          setTitle(data.stories[0].title || "Truyện chưa đặt tên");
-          setSystemInstructions(data.stories[0].systemInstructions || "");
-        }
-      })
-      .catch((err) => console.error(err));
-  }
-
-  function saveToDrive(updatedBlocks = blocks, updatedSystem = systemInstructions) {
-    if (!session) return;
-    setSaving(true);
-    const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
-    const newStoryList = [{ 
-      title, 
-      content: combinedContent, 
-      systemInstructions: updatedSystem, 
-      blocks: updatedBlocks 
-    }];
-    setStoriesList(newStoryList);
-
-    fetch("/api/muse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "save", stories: newStoryList })
-    })
-      .catch((err) => console.error(err))
-      .finally(() => setSaving(false));
-  }
-
-  function syncWithDrive() {
-    if (!session) {
-      signIn("google");
-      return;
-    }
-    saveToDrive();
-  }
-
-  function handleGetSuggestions(currentBlocks = blocks) {
+  function handleGetSuggestions() {
     setLoadingSuggestions(true);
     fetch("/api/muse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "suggest", blocks: currentBlocks })
+      body: JSON.stringify({ action: "suggest", currentStory: blocks.map((b) => b.text).join("\n\n") })
     })
       .then((res) => res.json())
       .then((data) => {
@@ -138,7 +118,6 @@ function MuseApp() {
       .finally(() => setLoadingSuggestions(false));
   }
 
-  // Gọi Gemini 3.5 Flash biên dịch và phóng tác truyện trực tiếp
   function handleGenerate(moodType?: string) {
     const promptToSend = moodType || userPrompt;
     if (!promptToSend.trim() || loading) return;
@@ -186,8 +165,6 @@ function MuseApp() {
           };
           const finalBlocks = [...updatedBlocks, aiBlock];
           setBlocks(finalBlocks);
-          
-          saveToDrive(finalBlocks, systemInstructions);
           handleGetSuggestions(finalBlocks);
         }
       })
@@ -202,14 +179,12 @@ function MuseApp() {
   function handleDeleteBlock(id: string) {
     const updatedBlocks = blocks.filter((b) => b.id !== id);
     setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks, systemInstructions);
     handleGetSuggestions(updatedBlocks);
   }
 
   function handleUpdateBlockText(id: string, newText: string) {
     const updatedBlocks = blocks.map((b) => b.id === id ? { ...b, text: newText } : b);
     setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks, systemInstructions);
   }
 
   return (
@@ -434,4 +409,12 @@ function MuseApp() {
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#0A0A0C]/90 border-t border-appleBorder py-3 flex justify-around backdrop-blur-xl">
         <button onClick={() => setActiveTab("editor")} className={activeTab === "editor" ? "flex flex-col items-center space-y-1 text-rose-400" : "flex flex-col items-center space-y-1 text-zinc-500"}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M11.828 15H9v-2.828l8.586-8.586z
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          <span className="text-[10px]">Nhà sáng tác</span>
+        </button>
+        <button onClick={() => setActiveTab("library")} className={activeTab === "library" ? "flex flex-col items-center space-y-1 text-rose-400" : "flex flex-col items-center space-y-1 text-zinc-500"}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+          </svg>
+          <sp
