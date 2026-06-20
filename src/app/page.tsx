@@ -3,15 +3,9 @@
 import { useState, useEffect } from "react";
 import { SessionProvider, useSession, signIn, signOut } from "next-auth/react";
 
-interface StoryBlock {
-  id: string;
-  type: "user" | "ai";
-  text: string;
-}
-
 function MuseApp() {
   const { data: session } = useSession();
-  const [blocks, setBlocks] = useState<StoryBlock[]>([]);
+  const [currentStory, setCurrentStory] = useState("");
   const [title, setTitle] = useState("Tác phẩm chưa đặt tên");
   const [userPrompt, setUserPrompt] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,6 +18,9 @@ function MuseApp() {
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [aiStatusVisible, setAiStatusVisible] = useState(false);
   const [aiSteps, setAiSteps] = useState<string[]>([]);
+
+  // Lịch sử khôi phục (Dùng để thu hồi đoạn văn AI viết tiếp)
+  const [historyStack, setHistoryStack] = useState<string[]>([]);
 
   // Gợi ý sáng tác động
   const [suggestions, setSuggestions] = useState<string[]>([
@@ -66,18 +63,17 @@ function MuseApp() {
       .then((data) => {
         if (data.stories && data.stories.length > 0) {
           setStoriesList(data.stories);
-          setBlocks(data.stories[0].blocks || [{ id: "b1", type: "user", text: data.stories[0].content || "" }]);
+          setCurrentStory(data.stories[0].content || "");
           setTitle(data.stories[0].title || "Tác phẩm chưa đặt tên");
         }
       })
       .catch((err) => console.error(err));
   }
 
-  function saveToDrive(updatedBlocks = blocks) {
+  function saveToDrive(updatedContent = currentStory) {
     if (!session) return;
     setSaving(true);
-    const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
-    const newStoryList = [{ title, content: combinedContent, blocks: updatedBlocks }];
+    const newStoryList = [{ title, content: updatedContent }];
     setStoriesList(newStoryList);
 
     fetch("/api/muse", {
@@ -97,12 +93,12 @@ function MuseApp() {
     saveToDrive();
   }
 
-  function handleGetSuggestions(currentBlocks = blocks) {
+  function handleGetSuggestions(storyText = currentStory) {
     setLoadingSuggestions(true);
     fetch("/api/muse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "suggest", blocks: currentBlocks })
+      body: JSON.stringify({ action: "suggest", currentStory: storyText })
     })
       .then((res) => res.json())
       .then((data) => {
@@ -114,6 +110,7 @@ function MuseApp() {
       .finally(() => setLoadingSuggestions(false));
   }
 
+  // 3. Gọi AI viết nối tiếp câu chữ mượt mà
   function handleGenerate(moodType?: string) {
     if (loading) return;
     setAiSteps([]);
@@ -125,7 +122,7 @@ function MuseApp() {
     fetch("/api/muse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "generate", blocks, userPrompt, mood: moodType })
+      body: JSON.stringify({ action: "generate", currentStory, userPrompt, mood: moodType })
     })
       .then((res) => {
         if (res.status !== 200) {
@@ -138,20 +135,19 @@ function MuseApp() {
           throw new Error(data.error);
         }
         if (data.text) {
-          const newBlock: StoryBlock = {
-            id: `ai_${Date.now()}`,
-            type: "ai",
-            text: data.text
-          };
-          const updatedBlocks = [...blocks, newBlock];
-          setBlocks(updatedBlocks);
-          setUserPrompt("");
-          setAiSteps((prev) => [...prev, "✨ Đăng tải thành công."]);
-          
-          saveToDrive(updatedBlocks);
-          handleGetSuggestions(updatedBlocks);
+          // Lưu trạng thái trước khi AI viết vào lịch sử khôi phục
+          setHistoryStack((prev) => [...prev, currentStory]);
 
-          // Tự động mờ ẩn widget thông tin AI sau 3 giây
+          const spacer = currentStory.endsWith(" ") || data.text.startsWith(" ") ? "" : " ";
+          const fullNewStory = currentStory ? `${currentStory}${spacer}${data.text}` : data.text;
+          
+          setCurrentStory(fullNewStory);
+          setUserPrompt("");
+          setAiSteps((prev) => [...prev, "✨ Sáng tác thành công."]);
+          
+          saveToDrive(fullNewStory);
+          handleGetSuggestions(fullNewStory);
+
           setTimeout(() => {
             setAiStatusVisible(false);
           }, 3000);
@@ -165,32 +161,14 @@ function MuseApp() {
       });
   }
 
-  function handleAddUserBlock() {
-    if (!userPrompt.trim()) return;
-    const newBlock: StoryBlock = {
-      id: `user_${Date.now()}`,
-      type: "user",
-      text: userPrompt
-    };
-    const updatedBlocks = [...blocks, newBlock];
-    setBlocks(updatedBlocks);
-    setUserPrompt("");
-    saveToDrive(updatedBlocks);
-    handleGetSuggestions(updatedBlocks);
-  }
-
-  function handleDeleteBlock(id: string) {
-    const updatedBlocks = blocks.filter((b) => b.id !== id);
-    setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks);
-    handleGetSuggestions(updatedBlocks);
-  }
-
-  // Sửa nội dung đoạn văn trực tiếp
-  function handleUpdateBlockText(id: string, newText: string) {
-    const updatedBlocks = blocks.map((b) => b.id === id ? { ...b, text: newText } : b);
-    setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks);
+  // Thu hồi đoạn văn AI vừa mới viết tiếp (Undo)
+  function handleUndoAI() {
+    if (historyStack.length === 0) return;
+    const previousState = historyStack[historyStack.length - 1];
+    setCurrentStory(previousState);
+    setHistoryStack((prev) => prev.slice(0, -1)); // Loại bỏ khỏi stack
+    saveToDrive(previousState);
+    handleGetSuggestions(previousState);
   }
 
   return (
@@ -253,7 +231,7 @@ function MuseApp() {
           </div>
         )}
 
-        {/* TAB NHÀ SÁNG TÁC (EDITOR) */}
+        {/* TAB NHÀ SÁNG TÁC (QUAY VỀ HỘP THOẠI ĐƠN SOẠN THẢO MƯỢT MÀ CHUẨN ĐẸP) */}
         {activeTab === "editor" && (
           <div className="space-y-4">
             
@@ -284,43 +262,21 @@ function MuseApp() {
               placeholder="Đặt tên cho tác phẩm..."
             />
             
-            <div className="space-y-4">
-              {blocks.length === 0 ? (
-                <p className="text-xs text-zinc-600 italic">Nhập ý tưởng của bạn ở bên dưới để bắt đầu câu chuyện...</p>
-              ) : (
-                blocks.map((block) => (
-                  <div
-                    key={block.id}
-                    className={`relative group p-4 rounded-2xl border transition-all duration-300 ${
-                      block.type === "user" 
-                        ? "bg-transparent border-appleBorder" 
-                        : "bg-[#121214]/60 border-[#F43F5E]/10"
-                    }`}
-                  >
-                    <div className="flex justify-between items-center mb-1.5 text-[10px] tracking-wider text-zinc-500 uppercase">
-                      <span>{block.type === "user" ? "✍️ Bạn viết" : "🌸 AI Muse viết"}</span>
-                      <button 
-                        onClick={() => handleDeleteBlock(block.id)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-rose-400 transition-all duration-300"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
-                    
-                    <textarea
-                      value={block.text}
-                      onChange={(e) => handleUpdateBlockText(block.id, e.target.value)}
-                      onFocus={() => setIsEditorFocused(true)}
-                      onBlur={() => setIsEditorFocused(false)}
-                      className="w-full bg-transparent text-zinc-300 text-[14.5px] leading-relaxed font-serif border-none outline-none focus:ring-0 resize-none h-auto min-h-[40px] overflow-hidden"
-                      rows={Math.max(block.text.split("\n").length, 1)}
-                    />
-                  </div>
-                ))
-              )}
-            </div>
+            {/* Ô soạn thảo độc nhất mượt mà */}
+            <textarea
+              value={currentStory}
+              onChange={(e) => {
+                setCurrentStory(e.target.value);
+                setHistoryStack([]); // Xóa stack khôi phục khi người dùng chủ động sửa tay
+              }}
+              onFocus={() => setIsEditorFocused(true)}
+              onBlur={() => {
+                setIsEditorFocused(false);
+                saveToDrive();
+              }}
+              className="w-full min-h-[400px] bg-transparent text-zinc-300 text-[15px] leading-relaxed font-serif border-none outline-none focus:ring-0 resize-none h-auto"
+              placeholder="Ghi lại những dòng cảm xúc, ý tưởng của bạn ở đây..."
+            />
           </div>
         )}
       </main>
@@ -333,7 +289,18 @@ function MuseApp() {
             {/* Cấu trúc Suggestions phẳng tinh tế */}
             <div className="bg-[#121214]/65 border border-appleBorder rounded-2xl p-2 backdrop-blur-xl">
               <div className="flex justify-between items-center px-1 mb-1 text-[9px] tracking-wider text-zinc-500 uppercase">
-                <span>Gợi ý sáng tác động</span>
+                <div className="flex items-center space-x-2">
+                  <span>Gợi ý sáng tác động</span>
+                  {/* Nút Hoàn tác thu hồi đoạn AI viết xuất hiện thông minh khi có lịch sử */}
+                  {historyStack.length > 0 && (
+                    <button 
+                      onClick={handleUndoAI}
+                      className="text-[10px] text-rose-300 bg-rose-500/10 px-2 py-0.5 rounded-md hover:bg-rose-500/20 transition-all"
+                    >
+                      ↩️ Thu hồi đoạn AI viết
+                    </button>
+                  )}
+                </div>
                 <div className="flex items-center space-x-1.5">
                   <button onClick={() => handleGetSuggestions()} className="hover:text-rose-300 transition-colors">
                     {loadingSuggestions ? "Đang tạo..." : "🔄 Đổi gợi ý"}
@@ -349,7 +316,6 @@ function MuseApp() {
                 </div>
               </div>
               
-              {/* Thay thế hoạt họa lồng nhau bằng mã CSS phẳng max-height ẩn hiện */}
               <div className={`transition-all duration-300 overflow-hidden ${isSuggestionsCollapsed ? "max-h-0 opacity-0" : "max-h-24 opacity-100 mt-1"}`}>
                 <div className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar">
                   {suggestions.map((sug, i) => (
@@ -375,7 +341,7 @@ function MuseApp() {
                 onChange={(e) => setUserPrompt(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    handleAddUserBlock();
+                    handleGenerate();
                   }
                 }}
               />
@@ -421,4 +387,4 @@ export default function Page() {
       <MuseApp />
     </SessionProvider>
   );
-            }
+      }
