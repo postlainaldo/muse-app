@@ -20,18 +20,16 @@ function MuseApp() {
   const [activeTab, setActiveTab] = useState("editor"); // editor | library | settings
   const [storiesList, setStoriesList] = useState<any[]>([]);
   
-  // Custom UI States
+  // Trạng thái giao diện
   const [greeting, setGreeting] = useState("Chào ngày mới");
   const [isEditorFocused, setIsEditorFocused] = useState(false);
-  
-  // AI Status Bubble States
   const [aiStatusVisible, setAiStatusVisible] = useState(false);
   const [isStatusMinimized, setIsStatusMinimized] = useState(true);
   const [aiSteps, setAiSteps] = useState<string[]>([]);
   const [isIdle, setIsIdle] = useState(false);
   const [bubbleX, setBubbleX] = useState<number | string>("16px");
 
-  // Suggestions States
+  // Gợi ý động
   const [suggestions, setSuggestions] = useState<string[]>([
     "🌸 Đi sâu vào nội tâm nhân vật",
     "✨ Tạo ra một cuộc gặp gỡ bất ngờ",
@@ -43,17 +41,22 @@ function MuseApp() {
   const bubbleControls = useAnimation();
   const dragConstraintsRef = useRef<HTMLDivElement>(null);
 
-  // 1. Lời chào theo giờ
+  // 1. Tính toán lời chào theo thời gian thực tế
   useEffect(() => {
     const hr = new Date().getHours();
     const name = "XIENGG XIENGG";
-    if (hr >= 4 && hr < 11) setGreeting(`Một buổi sáng dịu lành, ${name}`);
-    else if (hr >= 11 && hr < 14) setGreeting(`Bắt đầu buổi trưa thôi, ${name}`);
-    else if (hr >= 14 && hr < 18) setGreeting(`Một chiều nhẹ nhàng nhé, ${name}`);
-    else setGreeting(`Buổi tối thật bình yên, ${name}`);
+    if (hr >= 4 && hr < 11) {
+      setGreeting(`Một buổi sáng dịu lành, ${name}`);
+    } else if (hr >= 11 && hr < 14) {
+      setGreeting(`Bắt đầu buổi trưa thôi, ${name}`);
+    } else if (hr >= 14 && hr < 18) {
+      setGreeting(`Một chiều nhẹ nhàng nhé, ${name}`);
+    } else {
+      setGreeting(`Buổi tối thật bình yên, ${name}`);
+    }
   }, []);
 
-  // 2. Đếm ngược nhàn rỗi (3 giây mờ 50%)
+  // 2. Bộ đếm thời gian tự động mờ bong bóng chat sau 3 giây nhàn rỗi
   useEffect(() => {
     let timer: any;
     if (aiStatusVisible && !loading) {
@@ -63,10 +66,12 @@ function MuseApp() {
     } else {
       setIsIdle(false);
     }
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, [aiStatusVisible, loading]);
 
-  // Đồng bộ lưu trữ
+  // 3. Tải dữ liệu từ Google Drive sau khi liên kết thành công
   useEffect(() => {
     if (session) {
       loadDataFromDrive();
@@ -118,7 +123,7 @@ function MuseApp() {
     await saveToDrive();
   };
 
-  // 3. Tự động nép sát lề lân cận khi kết thúc kéo rê bong bóng
+  // 4. Xử lý bong bóng tự nép vào lề trái/phải thông minh
   const handleDragEnd = (event: any, info: any) => {
     setIsIdle(false);
     const screenWidth = typeof window !== "undefined" ? window.innerWidth : 375;
@@ -137,7 +142,7 @@ function MuseApp() {
     setIsIdle(false);
   };
 
-  // 4. Tạo gợi ý mới từ Gemini dựa trên diễn biến truyện hiện tại
+  // 5. Tạo gợi ý sáng tác động dựa trên ngữ cảnh hiện tại
   const handleGetSuggestions = async (currentBlocks = blocks) => {
     setLoadingSuggestions(true);
     try {
@@ -157,7 +162,7 @@ function MuseApp() {
     }
   };
 
-  // 5. Gọi AI viết nối tiếp
+  // 6. Gọi Gemini viết nối tiếp
   const handleGenerate = async (moodType?: string) => {
     if (loading) return;
     setAiSteps([]);
@@ -167,7 +172,7 @@ function MuseApp() {
     setIsIdle(false);
 
     try {
-      setAiSteps((prev) => [...prev, "⚡ Master AI đang phân tích toàn bộ các phân đoạn..."]);
+      setAiSteps((prev) => [...prev, "⚡ Trí tuệ nhân tạo đang phân tích ngữ cảnh..."]);
       await new Promise((r) => setTimeout(r, 400));
 
       const res = await fetch("/api/muse", {
@@ -192,10 +197,10 @@ function MuseApp() {
         const updatedBlocks = [...blocks, newBlock];
         setBlocks(updatedBlocks);
         setUserPrompt("");
-        setAiSteps((prev) => [...prev, "✨ Muse viết nối tiếp thành công."]);
+        setAiSteps((prev) => [...prev, "✨ Đăng tải thành công."]);
         
         saveToDrive(updatedBlocks);
-        handleGetSuggestions(updatedBlocks); // Tự động làm mới gợi ý dựa trên đoạn mới
+        handleGetSuggestions(updatedBlocks);
 
         setTimeout(() => {
           setIsStatusMinimized(true);
@@ -208,7 +213,6 @@ function MuseApp() {
     }
   };
 
-  // Thêm một đoạn chữ mới thủ công (Author viết)
   const handleAddUserBlock = () => {
     if (!userPrompt.trim()) return;
     const newBlock: StoryBlock = {
@@ -223,7 +227,6 @@ function MuseApp() {
     handleGetSuggestions(updatedBlocks);
   };
 
-  // Xóa một khối/đoạn văn bất kỳ
   const handleDeleteBlock = (id: string) => {
     const updatedBlocks = blocks.filter((b) => b.id !== id);
     setBlocks(updatedBlocks);
@@ -231,7 +234,6 @@ function MuseApp() {
     handleGetSuggestions(updatedBlocks);
   };
 
-  // Sửa nội dung của một đoạn
   const handleUpdateBlockText = (id: string, newText: string) => {
     const updatedBlocks = blocks.map((b) => b.id === id ? { ...b, text: newText } : b);
     setBlocks(updatedBlocks);
@@ -241,7 +243,7 @@ function MuseApp() {
   return (
     <div ref={dragConstraintsRef} className="min-h-screen bg-[#0A0A0C] text-[#F5F5F7] flex flex-col font-sans antialiased overflow-hidden relative">
       
-      {/* Top Header */}
+      {/* Header */}
       <header className={`sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0C]/75 border-b border-appleBorder px-6 py-4 flex justify-between items-center transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-2 pointer-events-none" : "opacity-100"}`}>
         <div>
           <span className="text-[10px] text-zinc-500 font-medium tracking-wider uppercase">{greeting}</span>
@@ -259,7 +261,7 @@ function MuseApp() {
         </div>
       </header>
 
-      {/* Main Content (Chế độ hiển thị phân đoạn dạng Khung Chat mượt mà) */}
+      {/* Main Content */}
       <main className="flex-1 overflow-y-auto px-6 py-6 pb-52 space-y-5">
         <AnimatePresence mode="wait">
           {activeTab === "editor" ? (
@@ -273,7 +275,6 @@ function MuseApp() {
                 placeholder="Đặt tên cho tác phẩm..."
               />
               
-              {/* Danh sách các đoạn văn dạng Gemini Blocks */}
               <div className="space-y-4">
                 {blocks.length === 0 ? (
                   <p className="text-xs text-zinc-600 italic">Nhập ý tưởng của bạn ở bên dưới để bắt đầu câu chuyện...</p>
@@ -289,7 +290,6 @@ function MuseApp() {
                           : "bg-[#121214]/60 border-[#F43F5E]/10"
                       }`}
                     >
-                      {/* Badge phân biệt và nút Xóa phân đoạn */}
                       <div className="flex justify-between items-center mb-1.5 text-[10px] tracking-wider text-zinc-500 uppercase">
                         <span>{block.type === "user" ? "✍️ Bạn viết" : "🌸 AI Muse viết"}</span>
                         <button 
@@ -302,7 +302,6 @@ function MuseApp() {
                         </button>
                       </div>
                       
-                      {/* Cho phép chạm vào chỉnh sửa trực tiếp nội dung */}
                       <textarea
                         value={block.text}
                         onChange={(e) => handleUpdateBlockText(block.id, e.target.value)}
@@ -350,7 +349,7 @@ function MuseApp() {
         </AnimatePresence>
       </main>
 
-      {/* Floating Prompt Bar & Dynamic Suggestions (Mũi tên đi xuống để tạm ẩn, hướng lên để mở) */}
+      {/* Floating Prompt Bar */}
       {activeTab === "editor" && (
         <div className={`fixed bottom-24 left-0 right-0 px-6 z-40 transition-all duration-700 ${isEditorFocused ? "opacity-5 transform translate-y-2 pointer-events-none" : "opacity-100"}`}>
           <div className="max-w-md mx-auto space-y-2.5">
@@ -363,7 +362,6 @@ function MuseApp() {
                   <button onClick={() => handleGetSuggestions()} className="hover:text-rose-300 transition-colors">
                     {loadingSuggestions ? "Đang tạo..." : "🔄 Đổi gợi ý"}
                   </button>
-                  {/* Nút mũi tên đi xuống để tạm ẩn / hướng lên để mở gợi ý */}
                   <button 
                     onClick={() => setIsSuggestionsCollapsed(!isSuggestionsCollapsed)} 
                     className="p-0.5 text-zinc-500 hover:text-white transition-colors"
@@ -375,7 +373,6 @@ function MuseApp() {
                 </div>
               </div>
               
-              {/* Danh sách gợi ý hoạt họa mượt mà */}
               <AnimatePresence>
                 {!isSuggestionsCollapsed && (
                   <motion.div 
@@ -388,7 +385,7 @@ function MuseApp() {
                       <button 
                         key={i} 
                         onClick={() => handleGenerate(sug)} 
-                        className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-[10.5px] px-3.5 py-1.5 rounded-full active:scale-95 transition-all hover:border-[#F43F5E]/30"
+                        className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all hover:border-[#F43F5E]/30"
                       >
                         {sug}
                       </button>
@@ -409,11 +406,7 @@ function MuseApp() {
                   setUserPrompt(e.target.value);
                   triggerBubbleActive();
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleAddUserBlock();
-                  }
-                }}
+                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
               />
               <button onClick={() => handleGenerate()} className="bg-rose-400 text-black p-3 rounded-full hover:bg-rose-300 transition-all active:scale-95">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -426,7 +419,7 @@ function MuseApp() {
         </div>
       )}
 
-      {/* Bottom Tab Bar */}
+      {/* Navigation Tab Bar */}
       <nav className={`fixed bottom-0 left-0 right-0 z-50 bg-[#0A0A0C]/90 border-t border-appleBorder py-3 flex justify-around backdrop-blur-xl transition-all duration-700 ${isEditorFocused ? "opacity-5 transform translate-y-2 pointer-events-none" : "opacity-100"}`}>
         <button onClick={() => setActiveTab("editor")} className={`flex flex-col items-center space-y-1 ${activeTab === "editor" ? "text-rose-400" : "text-zinc-500"}`}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -434,4 +427,11 @@ function MuseApp() {
           </svg>
           <span className="text-[10px]">Nhà sáng tác</span>
         </button>
-        <button onClick={() => setActiveTab("library")} className={`flex flex-col items-center space-y-1 ${activeTab === "library" ?
+        <button onClick={() => setActiveTab("library")} className={`flex flex-col items-center space-y-1 ${activeTab === "library" ? "text-rose-400" : "text-zinc-500"}`}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
+          </svg>
+          <span className="text-[10px]">Tủ sách</span>
+        </button>
+        <button onClick={() => setActiveTab("settings")} className={`flex flex-col items-center space-y-1 ${activeTab === "settings" ? "text-rose-400" : "text-zinc-500"}`}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 
