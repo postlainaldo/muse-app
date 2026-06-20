@@ -5,7 +5,7 @@ import { authOptions } from "../../../lib/auth";
 
 export async function POST(req: Request) {
   const session: any = await getServerSession(authOptions);
-  const { action, currentStory, userPrompt, mood, stories } = await req.json();
+  const { action, blocks, userPrompt, mood, stories } = await req.json();
 
   if (!session?.accessToken) {
     return NextResponse.json({ error: "Chưa ủy quyền Google Drive." }, { status: 401 });
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   const drive = google.drive({ version: "v3", auth });
 
   try {
-    // 1. Lưu truyện lên Google Drive
+    // 1. Đồng bộ lưu dữ liệu lên Google Drive
     if (action === "save") {
       const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
       const files = resList.data.files || [];
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // 2. Tải truyện từ Google Drive
+    // 2. Tải dữ liệu từ Google Drive
     if (action === "load") {
       const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
       const files = resList.data.files || [];
@@ -38,17 +38,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ stories: resContent.data });
     }
 
-    // 3. Quy trình gọi Gemini viết nối tiếp trực tiếp (Blazing Fast & Ultra Reliable)
+    // Gộp ngữ cảnh từ các khối chữ trước đó để AI hiểu mạch truyện
+    const contextText = blocks && Array.isArray(blocks) 
+      ? blocks.map((b: any) => `${b.type === "user" ? "Author" : "Muse"}: ${b.text}`).join("\n\n")
+      : "";
+
+    // 3. Quy trình gọi Gemini viết tiếp nối tiếp
     if (action === "generate") {
       if (!process.env.GEMINI_API_KEY) {
-        throw new Error("Thiếu cấu hình biến môi trường GEMINI_API_KEY trên Vercel.");
+        throw new Error("Thiếu cấu hình biến môi trường GEMINI_API_KEY.");
       }
 
       const fullPrompt = mood ? `Viết tiếp với văn phong phong cách: [${mood}]. Ý tưởng bổ sung: ${userPrompt || "Viết tiếp một cách tự nhiên."}` : userPrompt;
 
-      // Prompt chuyên biệt tối ưu điểm tiếp nối câu từ mượt mà của Google AI Studio
-      const systemPrompt = `You are a creative co-author continuing a story context. 
-      Current Story Context: "${currentStory}"
+      const systemPrompt = `You are a creative co-author continuing a story. 
+      Current Story Context: "${contextText}"
       Prompt/Mood Instruction: "${fullPrompt}"
       
       CRITICAL INSTRUCTION: Continue writing the story seamlessly from the exact last word of the context. 
@@ -70,14 +74,38 @@ export async function POST(req: Request) {
       }
 
       const geminiData = await geminiRes.json();
-      if (!geminiData.candidates || geminiData.candidates.length === 0) {
-        throw new Error("Gemini API không trả về kết quả.");
+      const outputText = geminiData.candidates[0].content.parts[0].text;
+      return NextResponse.json({ text: outputText });
+    }
+
+    // 4. Kịch bản phân tích gợi ý động theo ngữ cảnh thực tế (Dynamic Suggestions)
+    if (action === "suggest") {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("Thiếu cấu hình biến môi trường.");
       }
 
-      const outputText = geminiData.candidates[0].content.parts[0].text;
-      return NextResponse.json({
-        text: outputText
+      const suggestPrompt = `Dựa trên ngữ cảnh câu chuyện hiện tại dưới đây, hãy đưa ra đúng 3 gợi ý ngắn gọn (dưới 7 từ mỗi gợi ý) về hướng đi tiếp theo của cốt truyện. Gợi ý cần khơi gợi cảm xúc, kịch tính, lãng mạn hoặc bất ngờ.
+      Ngữ cảnh truyện: "${contextText || "Bắt đầu câu chuyện mới"}"
+      
+      Trả về kết quả dưới dạng mảng JSON thuần túy như sau, tuyệt đối không viết thêm lời bình:
+      ["Gợi ý 1", "Gợi ý 2", "Gợi ý 3"]`;
+
+      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: suggestPrompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
       });
+
+      if (!geminiRes.ok) {
+        throw new Error("Không thể tạo gợi ý.");
+      }
+
+      const geminiData = await geminiRes.json();
+      const rawText = geminiData.candidates[0].content.parts[0].text;
+      return NextResponse.json({ suggestions: JSON.parse(rawText) });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
