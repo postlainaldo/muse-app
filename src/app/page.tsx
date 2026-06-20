@@ -20,7 +20,7 @@ function MuseApp() {
   const [activeTab, setActiveTab] = useState("editor"); // editor | library | settings
   const [storiesList, setStoriesList] = useState<any[]>([]);
   
-  // Các trạng thái giao diện
+  // Trạng thái giao diện
   const [greeting, setGreeting] = useState("Chào ngày mới");
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [aiStatusVisible, setAiStatusVisible] = useState(false);
@@ -29,7 +29,7 @@ function MuseApp() {
   const [isIdle, setIsIdle] = useState(false);
   const [bubbleX, setBubbleX] = useState<number | string>("16px");
 
-  // Gợi ý động
+  // Gợi ý sáng tác động
   const [suggestions, setSuggestions] = useState<string[]>([
     "🌸 Đi sâu vào nội tâm nhân vật",
     "✨ Tạo ra một cuộc gặp gỡ bất ngờ",
@@ -41,7 +41,7 @@ function MuseApp() {
   const bubbleControls = useAnimation();
   const dragConstraintsRef = useRef<HTMLDivElement>(null);
 
-  // 1. Tính toán lời chào ngọt ngào
+  // 1. Tính toán lời chào ngọt ngào dựa theo giờ thực tế
   useEffect(() => {
     const hr = new Date().getHours();
     const name = "XIENGG XIENGG";
@@ -56,7 +56,7 @@ function MuseApp() {
     }
   }, []);
 
-  // 2. Bộ đếm thời gian tự động mờ bong bóng chat sau 3 giây
+  // 2. Tự động mờ bong bóng chat sau 3 giây nhàn rỗi
   useEffect(() => {
     let timer: any;
     if (aiStatusVisible && !loading) {
@@ -71,60 +71,56 @@ function MuseApp() {
     };
   }, [aiStatusVisible, loading]);
 
-  // 3. Tải dữ liệu từ Google Drive sau khi liên kết thành công
+  // 3. Tải dữ liệu từ Google Drive sau khi đăng nhập thành công
   useEffect(() => {
     if (session) {
       loadDataFromDrive();
     }
   }, [session]);
 
-  const loadDataFromDrive = async () => {
-    try {
-      const res = await fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "load" })
-      });
-      const data = await res.json();
-      if (data.stories && data.stories.length > 0) {
-        setStoriesList(data.stories);
-        setBlocks(data.stories[0].blocks || [{ id: "b1", type: "user", text: data.stories[0].content || "" }]);
-        setTitle(data.stories[0].title || "Tác phẩm chưa đặt tên");
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  // CHUYỂN TOÀN BỘ CÁC HÀM SANG PHƯƠNG THỨC KHAI BÁO TRUYỀN THỐNG (Bảo mật cú pháp cho SWC)
+  function loadDataFromDrive() {
+    fetch("/api/muse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "load" })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.stories && data.stories.length > 0) {
+          setStoriesList(data.stories);
+          setBlocks(data.stories[0].blocks || [{ id: "b1", type: "user", text: data.stories[0].content || "" }]);
+          setTitle(data.stories[0].title || "Tác phẩm chưa đặt tên");
+        }
+      })
+      .catch((err) => console.error(err));
+  }
 
-  const saveToDrive = async (updatedBlocks = blocks) => {
+  function saveToDrive(updatedBlocks = blocks) {
     if (!session) return;
     setSaving(true);
-    try {
-      const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
-      const newStoryList = [{ title, content: combinedContent, blocks: updatedBlocks }];
-      setStoriesList(newStoryList);
-      await fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", stories: newStoryList })
-      });
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  };
+    const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
+    const newStoryList = [{ title, content: combinedContent, blocks: updatedBlocks }];
+    setStoriesList(newStoryList);
 
-  const syncWithDrive = async () => {
+    fetch("/api/muse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "save", stories: newStoryList })
+    })
+      .catch((err) => console.error(err))
+      .finally(() => setSaving(false));
+  }
+
+  function syncWithDrive() {
     if (!session) {
       signIn("google");
       return;
     }
-    await saveToDrive();
-  };
+    saveToDrive();
+  }
 
-  // 4. Xử lý bong bóng tự nép vào lề
-  const handleDragEnd = (event: any, info: any) => {
+  function handleDragEnd(event: any, info: any) {
     setIsIdle(false);
     const screenWidth = typeof window !== "undefined" ? window.innerWidth : 375;
     const finalX = info.point.x;
@@ -136,34 +132,30 @@ function MuseApp() {
       setBubbleX(`${screenWidth - 76}px`);
       bubbleControls.start({ x: screenWidth - 76, transition: { type: "spring", stiffness: 300, damping: 20 } });
     }
-  };
+  }
 
-  const triggerBubbleActive = () => {
+  function triggerBubbleActive() {
     setIsIdle(false);
-  };
+  }
 
-  // 5. Tạo gợi ý sáng tác động
-  const handleGetSuggestions = async (currentBlocks = blocks) => {
+  function handleGetSuggestions(currentBlocks = blocks) {
     setLoadingSuggestions(true);
-    try {
-      const res = await fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "suggest", blocks: currentBlocks })
-      });
-      const data = await res.json();
-      if (data.suggestions) {
-        setSuggestions(data.suggestions);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingSuggestions(false);
-    }
-  };
+    fetch("/api/muse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "suggest", blocks: currentBlocks })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.suggestions) {
+          setSuggestions(data.suggestions);
+        }
+      })
+      .catch((err) => console.error(err))
+      .finally(() => setLoadingSuggestions(false));
+  }
 
-  // 6. Gọi AI viết nối tiếp
-  const handleGenerate = async (moodType?: string) => {
+  function handleGenerate(moodType?: string) {
     if (loading) return;
     setAiSteps([]);
     setIsStatusMinimized(false);
@@ -171,49 +163,51 @@ function MuseApp() {
     setLoading(true);
     setIsIdle(false);
 
-    try {
-      setAiSteps((prev) => [...prev, "⚡ Trí tuệ nhân tạo đang phân tích ngữ cảnh..."]);
-      await new Promise((r) => setTimeout(r, 400));
+    setAiSteps((prev) => [...prev, "⚡ Trí tuệ nhân tạo đang phân tích ngữ cảnh..."]);
 
-      const res = await fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", blocks, userPrompt, mood: moodType })
-      });
-      const data = await res.json();
+    fetch("/api/muse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "generate", blocks, userPrompt, mood: moodType })
+    })
+      .then((res) => {
+        if (res.status !== 200) {
+          throw new Error("Lỗi máy chủ khi xử lý AI.");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        if (data.text) {
+          const newBlock: StoryBlock = {
+            id: `ai_${Date.now()}`,
+            type: "ai",
+            text: data.text
+          };
+          const updatedBlocks = [...blocks, newBlock];
+          setBlocks(updatedBlocks);
+          setUserPrompt("");
+          setAiSteps((prev) => [...prev, "✨ Đăng tải thành công."]);
+          
+          saveToDrive(updatedBlocks);
+          handleGetSuggestions(updatedBlocks);
 
-      if (res.status !== 200 || data.error) {
-        setAiSteps((prev) => [...prev, `❌ Lỗi: ${data.error || "Gặp sự cố."}`]);
+          setTimeout(() => {
+            setIsStatusMinimized(true);
+          }, 2000);
+        }
+      })
+      .catch((err) => {
+        setAiSteps((prev) => [...prev, `❌ Lỗi: ${err.message || "Gặp sự cố."}`]);
+      })
+      .finally(() => {
         setLoading(false);
-        return;
-      }
+      });
+  }
 
-      if (data.text) {
-        const newBlock: StoryBlock = {
-          id: `ai_${Date.now()}`,
-          type: "ai",
-          text: data.text
-        };
-        const updatedBlocks = [...blocks, newBlock];
-        setBlocks(updatedBlocks);
-        setUserPrompt("");
-        setAiSteps((prev) => [...prev, "✨ Đăng tải thành công."]);
-        
-        saveToDrive(updatedBlocks);
-        handleGetSuggestions(updatedBlocks);
-
-        setTimeout(() => {
-          setIsStatusMinimized(true);
-        }, 2000);
-      }
-    } catch (err) {
-      setAiSteps((prev) => [...prev, "❌ Lỗi kết nối mạng."]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddUserBlock = () => {
+  function handleAddUserBlock() {
     if (!userPrompt.trim()) return;
     const newBlock: StoryBlock = {
       id: `user_${Date.now()}`,
@@ -225,25 +219,25 @@ function MuseApp() {
     setUserPrompt("");
     saveToDrive(updatedBlocks);
     handleGetSuggestions(updatedBlocks);
-  };
+  }
 
-  const handleDeleteBlock = (id: string) => {
+  function handleDeleteBlock(id: string) {
     const updatedBlocks = blocks.filter((b) => b.id !== id);
     setBlocks(updatedBlocks);
     saveToDrive(updatedBlocks);
     handleGetSuggestions(updatedBlocks);
-  };
+  }
 
-  const handleUpdateBlockText = (id: string, newText: string) => {
+  function handleUpdateBlockText(id: string, newText: string) {
     const updatedBlocks = blocks.map((b) => b.id === id ? { ...b, text: newText } : b);
     setBlocks(updatedBlocks);
     saveToDrive(updatedBlocks);
-  };
+  }
 
   return (
     <div ref={dragConstraintsRef} className="min-h-screen bg-[#0A0A0C] text-[#F5F5F7] flex flex-col font-sans antialiased overflow-hidden relative">
       
-      {/* Top Header */}
+      {/* Header */}
       <header className={`sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0C]/75 border-b border-appleBorder px-6 py-4 flex justify-between items-center transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-2 pointer-events-none" : "opacity-100"}`}>
         <div>
           <span className="text-[10px] text-zinc-500 font-medium tracking-wider uppercase">{greeting}</span>
@@ -406,7 +400,11 @@ function MuseApp() {
                   setUserPrompt(e.target.value);
                   triggerBubbleActive();
                 }}
-                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleAddUserBlock();
+                  }
+                }}
               />
               <button onClick={() => handleGenerate()} className="bg-rose-400 text-black p-3 rounded-full hover:bg-rose-300 transition-all active:scale-95">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -419,7 +417,7 @@ function MuseApp() {
         </div>
       )}
 
-      {/* Navigation Tab Bar */}
+      {/* Bottom Tab Bar */}
       <nav className={`fixed bottom-0 left-0 right-0 z-50 bg-[#0A0A0C]/90 border-t border-appleBorder py-3 flex justify-around backdrop-blur-xl transition-all duration-700 ${isEditorFocused ? "opacity-5 transform translate-y-2 pointer-events-none" : "opacity-100"}`}>
         <button onClick={() => setActiveTab("editor")} className={`flex flex-col items-center space-y-1 ${activeTab === "editor" ? "text-rose-400" : "text-zinc-500"}`}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -435,4 +433,4 @@ function MuseApp() {
         </button>
         <button onClick={() => setActiveTab("settings")} className={`flex flex-col items-center space-y-1 ${activeTab === "settings" ? "text-rose-400" : "text-zinc-500"}`}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="
+            <path strokeLinecap="round" strokeLinejoin="round" strok
