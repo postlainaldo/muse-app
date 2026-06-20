@@ -20,7 +20,7 @@ function MuseApp() {
   const [activeTab, setActiveTab] = useState("editor"); // editor | library | settings
   const [storiesList, setStoriesList] = useState<any[]>([]);
   
-  // Trạng thái giao diện
+  // Các trạng thái giao diện
   const [greeting, setGreeting] = useState("Chào ngày mới");
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [aiStatusVisible, setAiStatusVisible] = useState(false);
@@ -41,7 +41,7 @@ function MuseApp() {
   const bubbleControls = useAnimation();
   const dragConstraintsRef = useRef<HTMLDivElement>(null);
 
-  // 1. Tính toán lời chào theo thời gian thực tế
+  // 1. Tính toán lời chào ngọt ngào
   useEffect(() => {
     const hr = new Date().getHours();
     const name = "XIENGG XIENGG";
@@ -56,7 +56,7 @@ function MuseApp() {
     }
   }, []);
 
-  // 2. Bộ đếm thời gian tự động mờ bong bóng chat sau 3 giây nhàn rỗi
+  // 2. Bộ đếm thời gian tự động mờ bong bóng chat sau 3 giây
   useEffect(() => {
     let timer: any;
     if (aiStatusVisible && !loading) {
@@ -123,7 +123,7 @@ function MuseApp() {
     await saveToDrive();
   };
 
-  // 4. Xử lý bong bóng tự nép vào lề trái/phải thông minh
+  // 4. Xử lý bong bóng tự nép vào lề
   const handleDragEnd = (event: any, info: any) => {
     setIsIdle(false);
     const screenWidth = typeof window !== "undefined" ? window.innerWidth : 375;
@@ -142,7 +142,7 @@ function MuseApp() {
     setIsIdle(false);
   };
 
-  // 5. Tạo gợi ý sáng tác động dựa trên ngữ cảnh hiện tại
+  // 5. Tạo gợi ý sáng tác động
   const handleGetSuggestions = async (currentBlocks = blocks) => {
     setLoadingSuggestions(true);
     try {
@@ -162,7 +162,7 @@ function MuseApp() {
     }
   };
 
-  // 6. Gọi Gemini viết nối tiếp
+  // 6. Gọi AI viết nối tiếp
   const handleGenerate = async (moodType?: string) => {
     if (loading) return;
     setAiSteps([]);
@@ -243,7 +243,7 @@ function MuseApp() {
   return (
     <div ref={dragConstraintsRef} className="min-h-screen bg-[#0A0A0C] text-[#F5F5F7] flex flex-col font-sans antialiased overflow-hidden relative">
       
-      {/* Header */}
+      {/* Top Header */}
       <header className={`sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0C]/75 border-b border-appleBorder px-6 py-4 flex justify-between items-center transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-2 pointer-events-none" : "opacity-100"}`}>
         <div>
           <span className="text-[10px] text-zinc-500 font-medium tracking-wider uppercase">{greeting}</span>
@@ -434,4 +434,5 @@ function MuseApp() {
           <span className="text-[10px]">Tủ sách</span>
         </button>
         <button onClick={() => setActiveTab("settings")} className={`flex flex-col items-center space-y-1 ${activeTab === "settings" ? "text-rose-400" : "text-zinc-500"}`}>
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="
