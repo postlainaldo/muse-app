@@ -73,6 +73,15 @@ function MuseApp() {
     }
   };
 
+  // Hàm đồng bộ thủ công khi người dùng nhấn nút Đám mây
+  const syncWithDrive = async () => {
+    if (!session) {
+      signIn("google");
+      return;
+    }
+    await saveToDrive();
+  };
+
   // 3. Quy trình gọi AI với hộp thoại hiển thị tiến trình chi tiết
   const handleGenerate = async (moodType?: string) => {
     setAiSteps([]);
@@ -95,7 +104,7 @@ function MuseApp() {
         // Bước 2: Chọn Worker
         setAiSteps((prev) => [
           ...prev,
-          `🎯 Đã chọn phối hợp: ${data.selectedWorkers[0]} & ${data.selectedWorkers[1]}`
+          `🎯 Đã chọn phối hợp: ${data.selectedWorkers[0]} và ${data.selectedWorkers[1]}`
         ]);
         await new Promise((r) => setTimeout(r, 800));
         
@@ -255,7 +264,7 @@ function MuseApp() {
         </button>
       </nav>
 
-      {/* 6. AI Status Overlay (Tái cấu trúc và giải quyết triệt để lỗi khuất màn hình di động) */}
+      {/* 6. AI Status Overlay */}
       {aiOverlay && (
         <div className="fixed inset-0 flex items-center justify-center p-6 z-50 backdrop-blur-md bg-black/60">
           <div className="bg-[#1C1C1E] border border-appleBorder rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl flex flex-col max-h-[70vh]">
