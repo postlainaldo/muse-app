@@ -3,12 +3,12 @@ import { getServerSession } from "next-auth";
 import { google } from "googleapis";
 import { authOptions } from "../../../lib/auth";
 
-// Gộp toàn bộ 4 Worker về OpenRouter để giảm thiểu việc quản lý nhiều API Key
+// Định cấu hình danh sách mô hình miễn phí hoạt động ổn định nhất năm 2026 trên OpenRouter
 const WORKERS: Record<string, { name: string; url: string; model: string }> = {
-  WorkerA: { name: "Llama 3.3 70B (Siêu tốc)", url: "https://openrouter.ai/api/v1/chat/completions", model: "meta-llama/llama-3.3-70b-instruct:free" },
-  WorkerB: { name: "Gemma 2 9B (Google)", url: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemma-2-9b-it:free" },
-  WorkerC: { name: "Mistral Nemo (Pháp)", url: "https://openrouter.ai/api/v1/chat/completions", model: "mistralai/mistral-nemo:free" },
-  WorkerD: { name: "Qwen 2.5 14B (Alibaba)", url: "https://openrouter.ai/api/v1/chat/completions", model: "qwen/qwen-2.5-14b-instruct:free" },
+  WorkerA: { name: "Llama 3.1 8B (Meta)", url: "https://openrouter.ai/api/v1/chat/completions", model: "meta-llama/llama-3.1-8b-instruct:free" },
+  WorkerB: { name: "Qwen 2.5 7B (Alibaba)", url: "https://openrouter.ai/api/v1/chat/completions", model: "qwen/qwen-2.5-7b-instruct:free" },
+  WorkerC: { name: "Mistral 7B (Pháp)", url: "https://openrouter.ai/api/v1/chat/completions", model: "mistralai/mistral-7b-instruct:free" },
+  WorkerD: { name: "Mô hình Tự động (Free Router)", url: "https://openrouter.ai/api/v1/chat/completions", model: "openrouter/free" },
 };
 
 async function callLLM(apiUrl: string, apiKey: string, model: string, messages: any[]) {
@@ -17,7 +17,7 @@ async function callLLM(apiUrl: string, apiKey: string, model: string, messages: 
     headers: { 
       "Authorization": `Bearer ${apiKey}`, 
       "Content-Type": "application/json",
-      "HTTP-Referer": "https://muse-app-nine.vercel.app", // Yêu cầu từ OpenRouter
+      "HTTP-Referer": "https://muse-app-nine.vercel.app", 
       "X-Title": "Muse App"
     },
     body: JSON.stringify({ model, messages, temperature: 0.7 })
@@ -48,7 +48,6 @@ export async function POST(req: Request) {
   const drive = google.drive({ version: "v3", auth });
 
   try {
-    // 1. Lưu truyện lên Google Drive
     if (action === "save") {
       const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
       const files = resList.data.files || [];
@@ -61,7 +60,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // 2. Tải truyện từ Google Drive
     if (action === "load") {
       const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
       const files = resList.data.files || [];
@@ -70,7 +68,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ stories: resContent.data });
     }
 
-    // 3. Quy trình gọi AI
     if (action === "generate") {
       if (!process.env.GEMINI_API_KEY) {
         throw new Error("Thiếu cấu hình biến môi trường GEMINI_API_KEY trên Vercel.");
@@ -89,7 +86,6 @@ export async function POST(req: Request) {
       - WorkerD: Rich world-building details, inner thoughts, philosophical depth.
       Return ONLY a JSON array, e.g., ["WorkerA", "WorkerB"]`;
 
-      // Cập nhật tên mô hình thành gemini-2.5-flash ổn định để tránh lỗi 404
       const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -98,11 +94,16 @@ export async function POST(req: Request) {
           generationConfig: { responseMimeType: "application/json" }
         })
       });
+
+      if (!geminiRes.ok) {
+        const geminiErr = await geminiRes.text();
+        throw new Error(`Gemini Master AI Error: ${geminiRes.status} - ${geminiErr}`);
+      }
+
       const geminiData = await geminiRes.json();
       let decisionText = geminiData.candidates[0].content.parts[0].text;
       decisionText = decisionText.replace(/```json|```/g, "").trim();
       
-      // Cơ chế bóc tách JSON cực kỳ an toàn đề phòng LLM trả lỗi định dạng
       let w1 = "WorkerA";
       let w2 = "WorkerB";
       try {
@@ -110,9 +111,6 @@ export async function POST(req: Request) {
         if (Array.isArray(decision) && decision.length >= 2) {
           w1 = decision[0];
           w2 = decision[1];
-        } else if (decision.selected && Array.isArray(decision.selected)) {
-          w1 = decision.selected[0];
-          w2 = decision.selected[1];
         } else {
           const matches = decisionText.match(/Worker[A-D]/g);
           if (matches && matches.length >= 2) {
@@ -128,19 +126,26 @@ export async function POST(req: Request) {
         }
       }
 
-      // Đảm bảo khóa Worker luôn tồn tại hợp lệ
       if (!WORKERS[w1]) w1 = "WorkerA";
       if (!WORKERS[w2]) w2 = "WorkerB";
 
-      const workerPrompt = `Context: ${currentStory}. Please continue writing the story naturally (about 80-120 words) matching this prompt/mood requirement: "${fullPrompt}".`;
+      // Cập nhật hệ thống prompt để ép AI viết nối chữ mượt mà đúng chuẩn Google AI Studio
+      const workerPrompt = `You are a creative co-author continuing a story context. 
+      Story context: "${currentStory}"
+      Prompt/Mood requirement: "${fullPrompt}"
       
-      // Gọi song song 2 Worker qua OpenRouter
+      CRITICAL INSTRUCTION: Continue writing the story seamlessly from the very last word of the context. 
+      Do NOT write any introductory notes, greetings, or explanations. 
+      Do NOT repeat the prompt or previous sentences. 
+      Write ONLY the continuation text (about 80-120 words) as if you are the same author writing the very next sentence.`;
+      
       const p1 = callLLM(WORKERS[w1].url, process.env.OPENROUTER_API_KEY, WORKERS[w1].model, [{ role: "user", content: workerPrompt }]);
       const p2 = callLLM(WORKERS[w2].url, process.env.OPENROUTER_API_KEY, WORKERS[w2].model, [{ role: "user", content: workerPrompt }]);
       const [res1, res2] = await Promise.all([p1, p2]);
 
-      // Cập nhật tên mô hình biên tập đánh giá thành gemini-2.5-flash
-      const evalPrompt = `Current story context: "${currentStory}"\n\nPrompt/mood instruction: "${fullPrompt}"\n\nSelect and combine the best, most emotional parts of these two continuations into a single, perfectly flowing paragraph:\nContinuation 1 (from ${WORKERS[w1].name}): "${res1}"\nContinuation 2 (from ${WORKERS[w2].name}): "${res2}"\n\nOutput only the finalized story paragraph with no extra dialogue or explanations.`;
+      // Ép Master Editor tối ưu mượt mà điểm tiếp nối câu chữ
+      const evalPrompt = `Current story context: "${currentStory}"\n\nPrompt/mood instruction: "${fullPrompt}"\n\nSelect and combine the best, most emotional parts of these two continuations into a single, perfectly flowing paragraph that seamlessly continues the context:
+      Continuation 1 (from ${WORKERS[w1].name}): "${res1}"\nContinuation 2 (from ${WORKERS[w2].name}): "${res2}"\n\nCRITICAL: Your output must IMMEDIATELY follow the last word of the story context without any jump, greeting, introductory notes, or formatting. Output ONLY the finalized story continuation text.`;
 
       const evalRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
         method: "POST",
@@ -164,4 +169,4 @@ export async function POST(req: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Lỗi xử lý nội bộ" }, { status: 500 });
   }
-      }
+}
