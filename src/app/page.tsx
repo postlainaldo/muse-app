@@ -83,6 +83,7 @@ function MuseApp() {
   };
 
   // 3. Quy trình gọi AI với hộp thoại hiển thị tiến trình chi tiết
+// 3. Quy trình gọi AI với hộp thoại hiển thị tiến trình chi tiết
   const handleGenerate = async (moodType?: string) => {
     setAiSteps([]);
     setAiOverlay(true);
@@ -99,6 +100,13 @@ function MuseApp() {
         body: JSON.stringify({ action: "generate", currentStory, userPrompt, mood: moodType })
       });
       const data = await res.json();
+
+      // Nếu API trả về mã lỗi (như sai Key), hiển thị trực tiếp thông báo lỗi lên màn hình
+      if (res.status !== 200 || data.error) {
+        setAiSteps((prev) => [...prev, `❌ Lỗi: ${data.error || "Gặp lỗi không xác định từ máy chủ."}`]);
+        setLoading(false);
+        return;
+      }
 
       if (data.selectedWorkers) {
         // Bước 2: Chọn Worker
@@ -119,11 +127,9 @@ function MuseApp() {
         setUserPrompt("");
         setAiSteps((prev) => [...prev, "✨ Hoàn tất! Đoạn văn đã được viết tiếp mượt mà."]);
         saveToDrive(fullNewStory);
-      } else {
-        setAiSteps((prev) => [...prev, "❌ Gặp lỗi không mong muốn trong quá trình xử lý."]);
       }
     } catch (err) {
-      setAiSteps((prev) => [...prev, "❌ Lỗi kết nối API. Vui lòng kiểm tra lại cấu hình."]);
+      setAiSteps((prev) => [...prev, "❌ Lỗi kết nối mạng. Vui lòng kiểm tra kết nối internet."]);
     } finally {
       setLoading(false);
     }
