@@ -20,23 +20,24 @@ export default function Page() {
 
 function MuseContent() {
   const { data: session } = useSession();
-  const [blocks, setBlocks] = useState<StoryBlock[]>([]);
+  const [blocks, setBlocks] = useState([] as StoryBlock[]); // Ép kiểu phẳng không dùng dấu ngoặc nhọn <>
   const [title, setTitle] = useState("Truyện chưa đặt tên");
   const [systemInstructions, setSystemInstructions] = useState("");
   const [userPrompt, setUserPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("editor"); // editor | library | settings
-  const [storiesList, setStoriesList] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState("editor"); 
+  const [storiesList, setStoriesList] = useState([] as any[]);
   const [greeting, setGreeting] = useState("Chào ngày mới");
   const [isEditorFocused, setIsEditorFocused] = useState(false);
   const [isSystemCollapsed, setIsSystemCollapsed] = useState(true);
 
-  const [suggestions, setSuggestions] = useState<string[]>([
+  // Gợi ý sáng tác động
+  const [suggestions, setSuggestions] = useState([
     "🌸 Đi sâu vào nội tâm nhân vật",
     "✨ Tạo ra một cuộc gặp gỡ bất ngờ",
     "🎭 Đẩy kịch tính lên cao trào"
-  ]);
+  ] as string[]);
   const [isSuggestionsCollapsed, setIsSuggestionsCollapsed] = useState(false);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
@@ -415,6 +416,4 @@ function MuseContent() {
         </button>
         <button onClick={() => setActiveTab("library")} className={activeTab === "library" ? "flex flex-col items-center space-y-1 text-rose-400" : "flex flex-col items-center space-y-1 text-zinc-500"}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
-          </svg>
-          <sp
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10
