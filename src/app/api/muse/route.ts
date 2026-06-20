@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { google } from "googleapis";
-import { authOptions } from "../../../lib/auth"; // Import từ file mới tách
+import { authOptions } from "../../../lib/auth";
 
+// Gộp toàn bộ 4 Worker về OpenRouter để giảm thiểu việc quản lý nhiều API Key
 const WORKERS: Record<string, { name: string; url: string; model: string }> = {
-  WorkerA: { name: "Llama 3.3 70B (Siêu tốc)", url: "https://api.groq.com/openai/v1/chat/completions", model: "llama-3.3-70b-versatile" },
+  WorkerA: { name: "Llama 3.3 70B (Siêu tốc)", url: "https://openrouter.ai/api/v1/chat/completions", model: "meta-llama/llama-3.3-70b-instruct:free" },
   WorkerB: { name: "Gemma 2 9B (Google)", url: "https://openrouter.ai/api/v1/chat/completions", model: "google/gemma-2-9b-it:free" },
   WorkerC: { name: "Mistral Nemo (Pháp)", url: "https://openrouter.ai/api/v1/chat/completions", model: "mistralai/mistral-nemo:free" },
   WorkerD: { name: "Qwen 2.5 14B (Alibaba)", url: "https://openrouter.ai/api/v1/chat/completions", model: "qwen/qwen-2.5-14b-instruct:free" },
@@ -13,10 +14,24 @@ const WORKERS: Record<string, { name: string; url: string; model: string }> = {
 async function callLLM(apiUrl: string, apiKey: string, model: string, messages: any[]) {
   const res = await fetch(apiUrl, {
     method: "POST",
-    headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    headers: { 
+      "Authorization": `Bearer ${apiKey}`, 
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://muse-app-nine.vercel.app", // Yêu cầu từ OpenRouter
+      "X-Title": "Muse App"
+    },
     body: JSON.stringify({ model, messages, temperature: 0.7 })
   });
+  
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OpenRouter Error: ${res.status} - ${errText}`);
+  }
+  
   const data = await res.json();
+  if (!data.choices || data.choices.length === 0) {
+    throw new Error("OpenRouter không trả về kết quả.");
+  }
   return data.choices[0].message.content;
 }
 
@@ -25,7 +40,7 @@ export async function POST(req: Request) {
   const { action, currentStory, userPrompt, mood, stories } = await req.json();
 
   if (!session?.accessToken) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Chưa ủy quyền Google Drive." }, { status: 401 });
   }
 
   const auth = new google.auth.OAuth2();
@@ -33,7 +48,7 @@ export async function POST(req: Request) {
   const drive = google.drive({ version: "v3", auth });
 
   try {
-    // 1. Thao tác Lưu trữ dữ liệu lên Google Drive
+    // 1. Lưu truyện lên Google Drive
     if (action === "save") {
       const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
       const files = resList.data.files || [];
@@ -46,7 +61,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // 2. Thao tác Tải dữ liệu từ Google Drive
+    // 2. Tải truyện từ Google Drive
     if (action === "load") {
       const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
       const files = resList.data.files || [];
@@ -55,8 +70,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ stories: resContent.data });
     }
 
-    // 3. Quy trình Đa mô hình AI (Master - Workers Router)
+    // 3. Quy trình gọi AI
     if (action === "generate") {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("Thiếu cấu hình biến môi trường GEMINI_API_KEY trên Vercel.");
+      }
+      if (!process.env.OPENROUTER_API_KEY) {
+        throw new Error("Thiếu cấu hình biến môi trường OPENROUTER_API_KEY trên Vercel.");
+      }
+
       const fullPrompt = mood ? `Viết tiếp với văn phong phong cách: [${mood}]. Ý tưởng bổ sung: ${userPrompt || "Viết tiếp một cách tự nhiên."}` : userPrompt;
 
       const routerPrompt = `You are the Master AI coordinator. Analyze this story context: "${currentStory}" and the prompt: "${fullPrompt}".
@@ -75,18 +97,55 @@ export async function POST(req: Request) {
           generationConfig: { responseMimeType: "application/json" }
         })
       });
+
+      if (!geminiRes.ok) {
+        const geminiErr = await geminiRes.text();
+        throw new Error(`Gemini Master AI Error: ${geminiRes.status} - ${geminiErr}`);
+      }
+
       const geminiData = await geminiRes.json();
+      if (!geminiData.candidates || geminiData.candidates.length === 0) {
+        throw new Error("Gemini API không trả về kết quả phân tích.");
+      }
+
       let decisionText = geminiData.candidates[0].content.parts[0].text;
       decisionText = decisionText.replace(/```json|```/g, "").trim();
       
-      const decision = JSON.parse(decisionText);
-      const w1 = decision[0];
-      const w2 = decision[1];
+      // Cơ chế bóc tách JSON cực kỳ an toàn đề phòng LLM trả lỗi định dạng
+      let w1 = "WorkerA";
+      let w2 = "WorkerB";
+      try {
+        const decision = JSON.parse(decisionText);
+        if (Array.isArray(decision) && decision.length >= 2) {
+          w1 = decision[0];
+          w2 = decision[1];
+        } else if (decision.selected && Array.isArray(decision.selected)) {
+          w1 = decision.selected[0];
+          w2 = decision.selected[1];
+        } else {
+          const matches = decisionText.match(/Worker[A-D]/g);
+          if (matches && matches.length >= 2) {
+            w1 = matches[0];
+            w2 = matches[1];
+          }
+        }
+      } catch (e) {
+        const matches = decisionText.match(/Worker[A-D]/g);
+        if (matches && matches.length >= 2) {
+          w1 = matches[0];
+          w2 = matches[1];
+        }
+      }
+
+      // Đảm bảo khóa Worker luôn tồn tại hợp lệ
+      if (!WORKERS[w1]) w1 = "WorkerA";
+      if (!WORKERS[w2]) w2 = "WorkerB";
 
       const workerPrompt = `Context: ${currentStory}. Please continue writing the story naturally (about 80-120 words) matching this prompt/mood requirement: "${fullPrompt}".`;
       
-      const p1 = callLLM(WORKERS[w1].url, w1 === "WorkerA" ? process.env.GROQ_API_KEY! : process.env.OPENROUTER_API_KEY!, WORKERS[w1].model, [{ role: "user", content: workerPrompt }]);
-      const p2 = callLLM(WORKERS[w2].url, w2 === "WorkerA" ? process.env.GROQ_API_KEY! : process.env.OPENROUTER_API_KEY!, WORKERS[w2].model, [{ role: "user", content: workerPrompt }]);
+      // Gọi song song 2 Worker qua OpenRouter
+      const p1 = callLLM(WORKERS[w1].url, process.env.OPENROUTER_API_KEY, WORKERS[w1].model, [{ role: "user", content: workerPrompt }]);
+      const p2 = callLLM(WORKERS[w2].url, process.env.OPENROUTER_API_KEY, WORKERS[w2].model, [{ role: "user", content: workerPrompt }]);
       const [res1, res2] = await Promise.all([p1, p2]);
 
       const evalPrompt = `Current story context: "${currentStory}"\n\nPrompt/mood instruction: "${fullPrompt}"\n\nSelect and combine the best, most emotional parts of these two continuations into a single, perfectly flowing paragraph:\nContinuation 1 (from ${WORKERS[w1].name}): "${res1}"\nContinuation 2 (from ${WORKERS[w2].name}): "${res2}"\n\nOutput only the finalized story paragraph with no extra dialogue or explanations.`;
@@ -96,8 +155,13 @@ export async function POST(req: Request) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: [{ text: evalPrompt }] }] })
       });
+
+      if (!evalRes.ok) {
+        const evalErr = await evalRes.text();
+        throw new Error(`Gemini Editor Error: ${evalRes.status} - ${evalErr}`);
+      }
+
       const evalData = await evalRes.json();
-      
       return NextResponse.json({
         text: evalData.candidates[0].content.parts[0].text,
         selectedWorkers: [WORKERS[w1].name, WORKERS[w2].name]
@@ -106,6 +170,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Lỗi xử lý nội bộ" }, { status: 500 });
   }
 }
