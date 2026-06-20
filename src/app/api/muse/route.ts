@@ -3,6 +3,38 @@ import { getServerSession } from "next-auth";
 import { google } from "googleapis";
 import { authOptions } from "../../../lib/auth";
 
+// Định cấu hình danh sách mô hình miễn phí hoạt động ổn định nhất trên OpenRouter
+const WORKERS: Record<string, { name: string; url: string; model: string }> = {
+  WorkerA: { name: "Llama 3.1 8B (Meta)", url: "https://openrouter.ai/api/v1/chat/completions", model: "meta-llama/llama-3.1-8b-instruct:free" },
+  WorkerB: { name: "Qwen 2.5 7B (Alibaba)", url: "https://openrouter.ai/api/v1/chat/completions", model: "qwen/qwen-2.5-7b-instruct:free" },
+  WorkerC: { name: "Mistral 7B (Pháp)", url: "https://openrouter.ai/api/v1/chat/completions", model: "mistralai/mistral-7b-instruct:free" },
+  WorkerD: { name: "Mô hình Tự động (Free Router)", url: "https://openrouter.ai/api/v1/chat/completions", model: "openrouter/free" },
+};
+
+async function callLLM(apiUrl: string, apiKey: string, model: string, messages: any[]) {
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: { 
+      "Authorization": `Bearer ${apiKey}`, 
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://muse-app-nine.vercel.app", 
+      "X-Title": "Muse App"
+    },
+    body: JSON.stringify({ model, messages, temperature: 0.7 })
+  });
+  
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OpenRouter Error: ${res.status} - ${errText}`);
+  }
+  
+  const data = await res.json();
+  if (!data.choices || data.choices.length === 0) {
+    throw new Error("OpenRouter không trả về kết quả.");
+  }
+  return data.choices[0].message.content;
+}
+
 export async function POST(req: Request) {
   const session: any = await getServerSession(authOptions);
   const { action, currentStory, userPrompt, mood, stories } = await req.json();
@@ -29,14 +61,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // 2. Tải dữ liệu từ Google Drive (Tích hợp bộ tự động giải mã chuỗi phòng hờ lỗi F5)
+    // 2. Tải dữ liệu từ Google Drive (Khai báo thêm : any để sửa triệt để lỗi TypeScript)
     if (action === "load") {
       const resList = await drive.files.list({ q: "name='muse_data.json' and trashed=false", fields: "files(id)" });
       const files = resList.data.files || [];
       if (files.length === 0) return NextResponse.json({ stories: [] });
       const resContent = await drive.files.get({ fileId: files[0].id!, alt: "media" });
       
-      let parsedStories = resContent.data;
+      let parsedStories: any = resContent.data; // Ép kiểu any ở đây để không bị báo lỗi undefined[]
       if (typeof parsedStories === "string") {
         try {
           parsedStories = JSON.parse(parsedStories);
@@ -121,4 +153,4 @@ export async function POST(req: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message || "Lỗi xử lý nội bộ" }, { status: 500 });
   }
-}
+        }
