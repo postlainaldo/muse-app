@@ -2,9 +2,9 @@ import { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Muse - Không không sáng tác",
+    name: "Muse - Không gian sáng tác",
     short_name: "Muse",
-    description: "Trợ lý sáng tác truyện tối giản dựa trên Gemini",
+    description: "Trợ lý sáng tác truyện Co-authoring dựa trên Gemini 3.5 Flash",
     start_url: "/",
     display: "standalone",
     background_color: "#0A0A0C",
