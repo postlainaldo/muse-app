@@ -53,6 +53,15 @@ function MuseApp() {
     }
   }, [session]);
 
+  // 3. TỰ ĐỘNG SAO LƯU NGẦM (Debounce Auto-Save) sau 1.5 giây dừng gõ phím (Ngăn chặn triệt để lỗi F5 mất chữ)
+  useEffect(() => {
+    if (!session || !currentStory) return;
+    const delayDebounceFn = setTimeout(() => {
+      saveToDrive(currentStory);
+    }, 1500);
+    return () => clearTimeout(delayDebounceFn);
+  }, [currentStory, title]);
+
   function loadDataFromDrive() {
     fetch("/api/muse", {
       method: "POST",
@@ -110,7 +119,7 @@ function MuseApp() {
       .finally(() => setLoadingSuggestions(false));
   }
 
-  // 3. Gọi AI viết nối tiếp câu chữ mượt mà
+  // 4. Gọi Gemini viết nối tiếp
   function handleGenerate(moodType?: string) {
     if (loading) return;
     setAiSteps([]);
@@ -231,7 +240,7 @@ function MuseApp() {
           </div>
         )}
 
-        {/* TAB NHÀ SÁNG TÁC (QUAY VỀ HỘP THOẠI ĐƠN SOẠN THẢO MƯỢT MÀ CHUẨN ĐẸP) */}
+        {/* TAB NHÀ SÁNG TÁC */}
         {activeTab === "editor" && (
           <div className="space-y-4">
             
@@ -387,4 +396,4 @@ export default function Page() {
       <MuseApp />
     </SessionProvider>
   );
-      }
+}
