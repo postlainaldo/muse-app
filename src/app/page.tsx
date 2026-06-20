@@ -48,13 +48,13 @@ function MuseApp() {
     const hr = new Date().getHours();
     const name = "XIENGG XIENGG";
     if (hr >= 4 && hr < 11) {
-      setGreeting(`Một buổi sáng dịu lành, ${name}`);
+      setGreeting("Một buổi sáng dịu lành, " + name);
     } else if (hr >= 11 && hr < 14) {
-      setGreeting(`Bắt đầu buổi trưa thôi, ${name}`);
+      setGreeting("Bắt đầu buổi trưa thôi, " + name);
     } else if (hr >= 14 && hr < 18) {
-      setGreeting(`Một chiều nhẹ nhàng nhé, ${name}`);
+      setGreeting("Một chiều nhẹ nhàng nhé, " + name);
     } else {
-      setGreeting(`Buổi tối thật bình yên, ${name}`);
+      setGreeting("Buổi tối thật bình yên, " + name);
     }
   }, []);
 
@@ -65,7 +65,7 @@ function MuseApp() {
     }
   }, [session]);
 
-  // 3. Tự động sao lưu ngầm lên Google Drive (Debounce 1.5 giây sau khi ngừng gõ)
+  // 3. Tự động lưu trữ ngầm lên Google Drive (Debounce 1.5 giây sau khi ngừng gõ)
   useEffect(() => {
     if (!session || blocks.length === 0) return;
     const delayDebounceFn = setTimeout(() => {
@@ -146,7 +146,7 @@ function MuseApp() {
     setLoading(true);
 
     const userBlock: StoryBlock = {
-      id: `user_${Date.now()}`,
+      id: "user_" + Date.now(),
       type: "user",
       text: promptToSend,
       timestamp: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
@@ -179,7 +179,7 @@ function MuseApp() {
         }
         if (data.text) {
           const aiBlock: StoryBlock = {
-            id: `ai_${Date.now()}`,
+            id: "ai_" + Date.now(),
             type: "ai",
             text: data.text,
             timestamp: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
@@ -192,7 +192,7 @@ function MuseApp() {
         }
       })
       .catch((err) => {
-        alert(`Lỗi: ${err.message || "Gặp sự cố."}`);
+        alert("Lỗi: " + (err.message || "Gặp sự cố."));
       })
       .finally(() => {
         setLoading(false);
@@ -216,7 +216,7 @@ function MuseApp() {
     <div className="min-h-screen bg-[#0A0A0C] text-[#F5F5F7] flex flex-col font-sans antialiased overflow-hidden relative">
       
       {/* Header */}
-      <header className={`sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0C]/75 border-b border-appleBorder px-6 py-4 flex justify-between items-center transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-2 pointer-events-none" : "opacity-100"}`}>
+      <header className="sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0C]/75 border-b border-appleBorder px-6 py-4 flex justify-between items-center">
         <div>
           <span className="text-[10px] text-zinc-500 font-medium tracking-wider uppercase">{greeting}</span>
           <span className="font-serif text-xl font-semibold tracking-wide text-white flex items-center gap-1.5 mt-0.5">
@@ -272,7 +272,7 @@ function MuseApp() {
           </div>
         )}
 
-        {/* TAB NHÀ SÁNG TÁC (GOOGLE AI STUDIO CANVAS STYLE) */}
+        {/* TAB NHÀ SÁNG TÁC */}
         {activeTab === "editor" && (
           <div className="space-y-4">
             
@@ -281,12 +281,12 @@ function MuseApp() {
               value={title} 
               onChange={(e) => setTitle(e.target.value)} 
               onBlur={() => saveToDrive()}
-              className={`w-full bg-transparent text-xl font-semibold font-serif text-white focus:outline-none placeholder-zinc-800 transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-1 pointer-events-none" : "opacity-100"}`} 
+              className="w-full bg-transparent text-xl font-semibold font-serif text-white focus:outline-none placeholder-zinc-800"
               placeholder="Đặt tên cho tác phẩm..."
             />
 
-            {/* SYSTEM INSTRUCTIONS: Cấu hình bối cảnh và nhân vật phong cách Google AI Studio */}
-            <div className={`bg-[#121214]/80 border border-appleBorder rounded-2xl p-3.5 transition-all duration-700 ${isEditorFocused ? "opacity-5 pointer-events-none" : "opacity-100"}`}>
+            {/* SYSTEM INSTRUCTIONS */}
+            <div className="bg-[#121214]/80 border border-appleBorder rounded-2xl p-3.5">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-[10px] font-semibold text-rose-300 uppercase tracking-widest flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -302,17 +302,19 @@ function MuseApp() {
                 </button>
               </div>
               
-              <div className={`transition-all duration-500 overflow-hidden ${isSystemCollapsed ? "max-h-0 opacity-0" : "max-h-60 opacity-100 mt-2"}`}>
-                <textarea
-                  value={systemInstructions}
-                  onChange={(e) => setSystemInstructions(e.target.value)}
-                  placeholder="Nhập vai các nhân vật tại đây để định hướng AI phóng tác..."
-                  className="w-full h-32 bg-black/40 border border-appleBorder rounded-xl p-3 text-xs text-zinc-300 placeholder-zinc-700 leading-relaxed focus:outline-none font-serif"
-                />
-              </div>
+              {!isSystemCollapsed && (
+                <div className="mt-2">
+                  <textarea
+                    value={systemInstructions}
+                    onChange={(e) => setSystemInstructions(e.target.value)}
+                    placeholder="Nhập vai các nhân vật tại đây để định hướng AI phóng tác..."
+                    className="w-full h-32 bg-black/40 border border-appleBorder rounded-xl p-3 text-xs text-zinc-300 placeholder-zinc-700 leading-relaxed focus:outline-none font-serif"
+                  />
+                </div>
+              )}
             </div>
 
-            {/* AI STUDIO CANVAS: Trình diễn các đoạn văn phóng tác và các đoạn thoại của bạn */}
+            {/* AI STUDIO CANVAS */}
             <div className="space-y-6">
               {blocks.length === 0 ? (
                 <div className="text-center py-20 text-zinc-600 italic text-xs space-y-2">
@@ -322,17 +324,12 @@ function MuseApp() {
                 blocks.map((block) => (
                   <div
                     key={block.id}
-                    className={`relative p-5 rounded-2xl border transition-all duration-300 ${
-                      block.type === "user" 
-                        ? "bg-zinc-900/10 border-white/5" 
-                        : "bg-[#121214]/30 border-appleBorder"
-                    }`}
+                    className={block.type === "user" ? "relative p-5 rounded-2xl border border-white/5 bg-zinc-900/10" : "relative p-5 rounded-2xl border border-appleBorder bg-[#121214]/30"}
                   >
-                    {/* Header từng lượt hội thoại */}
                     <div className="flex justify-between items-center mb-2.5 text-[9px] tracking-wider text-zinc-500 uppercase">
                       <div className="flex items-center space-x-1.5">
-                        <span className={`w-1.5 h-1.5 rounded-full ${block.type === "user" ? "bg-zinc-600" : "bg-rose-400"}`}></span>
-                        <span>{block.type === "user" ? `Ý TƯỞNG GỐC CỦA BẠN - ${block.timestamp}` : `AI MUSE PHÓNG TÁC - ${block.timestamp}`}</span>
+                        <span className={block.type === "user" ? "w-1.5 h-1.5 rounded-full bg-zinc-600" : "w-1.5 h-1.5 rounded-full bg-rose-400"}></span>
+                        <span>{block.type === "user" ? "Ý TƯỞNG GỐC CỦA BẠN - " + block.timestamp : "AI MUSE PHÓNG TÁC - " + block.timestamp}</span>
                       </div>
                       <button 
                         onClick={() => handleDeleteBlock(block.id)}
@@ -344,7 +341,6 @@ function MuseApp() {
                       </button>
                     </div>
                     
-                    {/* Đoạn văn phóng tác / Lời thoại */}
                     <textarea
                       value={block.text}
                       onChange={(e) => handleUpdateBlockText(block.id, e.target.value)}
@@ -357,9 +353,8 @@ function MuseApp() {
                 ))
               )}
 
-              {/* Trạng thái AI đang viết trực tiếp ngay dòng cuối của Canvas giống AI Studio */}
               {loading && (
-                <div className="p-5 rounded-2xl border border-dashed border-rose-500/10 bg-[#121214]/10 animate-pulse flex items-center space-x-2 text-xs text-rose-300 font-mono">
+                <div className="p-5 rounded-2xl border border-dashed border-rose-500/10 bg-[#121214]/10 flex items-center space-x-2 text-xs text-rose-300 font-mono">
                   <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
                   <span>Model is writing...</span>
                 </div>
@@ -369,9 +364,9 @@ function MuseApp() {
         )}
       </main>
 
-      {/* Floating Prompt Bar & Suggestions Container */}
+      {/* Floating Prompt Bar */}
       {activeTab === "editor" && (
-        <div className={`fixed bottom-24 left-0 right-0 px-6 z-40 transition-all duration-700 ${isEditorFocused ? "opacity-5 transform translate-y-2 pointer-events-none" : "opacity-100"}`}>
+        <div className="fixed bottom-24 left-0 right-0 px-6 z-40">
           <div className="max-w-md mx-auto space-y-2.5">
             
             {/* Suggestions Container */}
@@ -382,31 +377,32 @@ function MuseApp() {
                   <button onClick={() => handleGetSuggestions()} className="hover:text-rose-300 transition-colors">
                     {loadingSuggestions ? "Đang tạo..." : "🔄 Đổi gợi ý"}
                   </button>
-                  {/* Nút mũi tên đi xuống để tạm ẩn, mũi tên hướng lên để mở rộng */}
                   <button 
                     onClick={() => setIsSuggestionsCollapsed(!isSuggestionsCollapsed)} 
                     className="p-0.5 text-zinc-500 hover:text-white transition-colors"
                   >
-                    <svg className={`w-3.5 h-3.5 transform transition-transform duration-300 ${isSuggestionsCollapsed ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 transform transition-transform duration-300" style={{ transform: isSuggestionsCollapsed ? "rotate(180deg)" : "rotate(0deg)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
                 </div>
               </div>
               
-              <div className={`transition-all duration-300 overflow-hidden ${isSuggestionsCollapsed ? "max-h-0 opacity-0" : "max-h-24 opacity-100 mt-1"}`}>
-                <div className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar">
-                  {suggestions.map((sug, i) => (
-                    <button 
-                      key={i} 
-                      onClick={() => handleGenerate(sug)} 
-                      className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all hover:border-[#F43F5E]/30"
-                    >
-                      {sug}
-                    </button>
-                  ))}
+              {!isSuggestionsCollapsed && (
+                <div className="transition-all duration-300 mt-1">
+                  <div className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar">
+                    {suggestions.map((sug, i) => (
+                      <button 
+                        key={i} 
+                        onClick={() => handleGenerate(sug)} 
+                        className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all hover:border-[#F43F5E]/30"
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
             
             {/* Prompt Input Area */}
@@ -424,4 +420,18 @@ function MuseApp() {
                 }}
               />
               <button onClick={() => handleGenerate()} className="bg-rose-400 text-black p-3 rounded-full hover:bg-rose-300 transition-all active:scale-95">
-                <svg 
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </button>
+            </div>
+            {saving && <p className="text-center text-[10px] text-zinc-500">Đang lưu giữ lên Drive...</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Tab Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#0A0A0C]/90 border-t border-appleBorder py-3 flex justify-around backdrop-blur-xl">
+        <button onClick={() => setActiveTab("editor")} className={activeTab === "editor" ? "flex flex-col items-center space-y-1 text-rose-400" : "flex flex-col items-center space-y-1 text-zinc-500"}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M11.828 15H9v-2.828l8.586-8.586z
