@@ -4,9 +4,15 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { SessionProvider, useSession, signIn, signOut } from "next-auth/react";
 
+interface StoryBlock {
+  id: string;
+  type: "user" | "ai";
+  text: string;
+}
+
 function MuseApp() {
   const { data: session } = useSession();
-  const [currentStory, setCurrentStory] = useState("");
+  const [blocks, setBlocks] = useState<StoryBlock[]>([]);
   const [title, setTitle] = useState("Tác phẩm chưa đặt tên");
   const [userPrompt, setUserPrompt] = useState("");
   const [loading, setLoading] = useState(false);
@@ -14,33 +20,40 @@ function MuseApp() {
   const [activeTab, setActiveTab] = useState("editor"); // editor | library | settings
   const [storiesList, setStoriesList] = useState<any[]>([]);
   
-  // Các trạng thái quản lý Bong bóng Chat head di động chuẩn Messenger
+  // Custom UI States
   const [greeting, setGreeting] = useState("Chào ngày mới");
   const [isEditorFocused, setIsEditorFocused] = useState(false);
+  
+  // AI Status Bubble States
   const [aiStatusVisible, setAiStatusVisible] = useState(false);
   const [isStatusMinimized, setIsStatusMinimized] = useState(true);
   const [aiSteps, setAiSteps] = useState<string[]>([]);
   const [isIdle, setIsIdle] = useState(false);
+  const [bubbleX, setBubbleX] = useState<number | string>("16px");
+
+  // Suggestions States
+  const [suggestions, setSuggestions] = useState<string[]>([
+    "🌸 Đi sâu vào nội tâm nhân vật",
+    "✨ Tạo ra một cuộc gặp gỡ bất ngờ",
+    "🎭 Đẩy kịch tính lên cao trào"
+  ]);
+  const [isSuggestionsCollapsed, setIsSuggestionsCollapsed] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
 
   const bubbleControls = useAnimation();
   const dragConstraintsRef = useRef<HTMLDivElement>(null);
 
-  // 1. Tính toán lời chào ngọt ngào dựa theo khung giờ thực tế
+  // 1. Lời chào theo giờ
   useEffect(() => {
     const hr = new Date().getHours();
     const name = "XIENGG XIENGG";
-    if (hr >= 4 && hr < 11) {
-      setGreeting(`Một buổi sáng dịu lành, ${name}`);
-    } else if (hr >= 11 && hr < 14) {
-      setGreeting(`Bắt đầu buổi trưa thôi, ${name}`);
-    } else if (hr >= 14 && hr < 18) {
-      setGreeting(`Một chiều nhẹ nhàng nhé, ${name}`);
-    } else {
-      setGreeting(`Buổi tối thật bình yên, ${name}`);
-    }
+    if (hr >= 4 && hr < 11) setGreeting(`Một buổi sáng dịu lành, ${name}`);
+    else if (hr >= 11 && hr < 14) setGreeting(`Bắt đầu buổi trưa thôi, ${name}`);
+    else if (hr >= 14 && hr < 18) setGreeting(`Một chiều nhẹ nhàng nhé, ${name}`);
+    else setGreeting(`Buổi tối thật bình yên, ${name}`);
   }, []);
 
-  // 2. Tự động mờ 50% sau 3 giây không có hoạt động chạm hoặc xử lý
+  // 2. Đếm ngược nhàn rỗi (3 giây mờ 50%)
   useEffect(() => {
     let timer: any;
     if (aiStatusVisible && !loading) {
@@ -50,12 +63,10 @@ function MuseApp() {
     } else {
       setIsIdle(false);
     }
-    return () => {
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [aiStatusVisible, loading]);
 
-  // 同 bộ Google Drive khi đăng nhập thành công
+  // Đồng bộ lưu trữ
   useEffect(() => {
     if (session) {
       loadDataFromDrive();
@@ -72,7 +83,7 @@ function MuseApp() {
       const data = await res.json();
       if (data.stories && data.stories.length > 0) {
         setStoriesList(data.stories);
-        setCurrentStory(data.stories[0].content || "");
+        setBlocks(data.stories[0].blocks || [{ id: "b1", type: "user", text: data.stories[0].content || "" }]);
         setTitle(data.stories[0].title || "Tác phẩm chưa đặt tên");
       }
     } catch (err) {
@@ -80,11 +91,12 @@ function MuseApp() {
     }
   };
 
-  const saveToDrive = async (updatedContent = currentStory) => {
+  const saveToDrive = async (updatedBlocks = blocks) => {
     if (!session) return;
     setSaving(true);
     try {
-      const newStoryList = [{ title, content: updatedContent }];
+      const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
+      const newStoryList = [{ title, content: combinedContent, blocks: updatedBlocks }];
       setStoriesList(newStoryList);
       await fetch("/api/muse", {
         method: "POST",
@@ -106,15 +118,17 @@ function MuseApp() {
     await saveToDrive();
   };
 
-  // 3. Xử lý trượt nép vào lề trái hoặc phải màn hình mượt mà
+  // 3. Tự động nép sát lề lân cận khi kết thúc kéo rê bong bóng
   const handleDragEnd = (event: any, info: any) => {
     setIsIdle(false);
     const screenWidth = typeof window !== "undefined" ? window.innerWidth : 375;
     const finalX = info.point.x;
     
     if (finalX < screenWidth / 2) {
+      setBubbleX("16px");
       bubbleControls.start({ x: 16, transition: { type: "spring", stiffness: 300, damping: 20 } });
     } else {
+      setBubbleX(`${screenWidth - 76}px`);
       bubbleControls.start({ x: screenWidth - 76, transition: { type: "spring", stiffness: 300, damping: 20 } });
     }
   };
@@ -123,7 +137,27 @@ function MuseApp() {
     setIsIdle(false);
   };
 
-  // 4. Gọi Gemini viết nối tiếp tốc độ cao
+  // 4. Tạo gợi ý mới từ Gemini dựa trên diễn biến truyện hiện tại
+  const handleGetSuggestions = async (currentBlocks = blocks) => {
+    setLoadingSuggestions(true);
+    try {
+      const res = await fetch("/api/muse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "suggest", blocks: currentBlocks })
+      });
+      const data = await res.json();
+      if (data.suggestions) {
+        setSuggestions(data.suggestions);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // 5. Gọi AI viết nối tiếp
   const handleGenerate = async (moodType?: string) => {
     if (loading) return;
     setAiSteps([]);
@@ -133,30 +167,35 @@ function MuseApp() {
     setIsIdle(false);
 
     try {
-      setAiSteps((prev) => [...prev, "⚡ Trí tuệ nhân tạo đang phân tích ngữ cảnh..."]);
+      setAiSteps((prev) => [...prev, "⚡ Master AI đang phân tích toàn bộ các phân đoạn..."]);
       await new Promise((r) => setTimeout(r, 400));
 
       const res = await fetch("/api/muse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate", currentStory, userPrompt, mood: moodType })
+        body: JSON.stringify({ action: "generate", blocks, userPrompt, mood: moodType })
       });
       const data = await res.json();
 
       if (res.status !== 200 || data.error) {
-        setAiSteps((prev) => [...prev, `❌ Lỗi: ${data.error || "Gặp sự cố kết nối."}`]);
+        setAiSteps((prev) => [...prev, `❌ Lỗi: ${data.error || "Gặp sự cố."}`]);
         setLoading(false);
         return;
       }
 
       if (data.text) {
-        const spacer = currentStory.endsWith(" ") || data.text.startsWith(" ") ? "" : " ";
-        const fullNewStory = currentStory ? `${currentStory}${spacer}${data.text}` : data.text;
-        
-        setCurrentStory(fullNewStory);
+        const newBlock: StoryBlock = {
+          id: `ai_${Date.now()}`,
+          type: "ai",
+          text: data.text
+        };
+        const updatedBlocks = [...blocks, newBlock];
+        setBlocks(updatedBlocks);
         setUserPrompt("");
-        setAiSteps((prev) => [...prev, "✨ Đăng tải thành công."]);
-        saveToDrive(fullNewStory);
+        setAiSteps((prev) => [...prev, "✨ Muse viết nối tiếp thành công."]);
+        
+        saveToDrive(updatedBlocks);
+        handleGetSuggestions(updatedBlocks); // Tự động làm mới gợi ý dựa trên đoạn mới
 
         setTimeout(() => {
           setIsStatusMinimized(true);
@@ -169,10 +208,40 @@ function MuseApp() {
     }
   };
 
+  // Thêm một đoạn chữ mới thủ công (Author viết)
+  const handleAddUserBlock = () => {
+    if (!userPrompt.trim()) return;
+    const newBlock: StoryBlock = {
+      id: `user_${Date.now()}`,
+      type: "user",
+      text: userPrompt
+    };
+    const updatedBlocks = [...blocks, newBlock];
+    setBlocks(updatedBlocks);
+    setUserPrompt("");
+    saveToDrive(updatedBlocks);
+    handleGetSuggestions(updatedBlocks);
+  };
+
+  // Xóa một khối/đoạn văn bất kỳ
+  const handleDeleteBlock = (id: string) => {
+    const updatedBlocks = blocks.filter((b) => b.id !== id);
+    setBlocks(updatedBlocks);
+    saveToDrive(updatedBlocks);
+    handleGetSuggestions(updatedBlocks);
+  };
+
+  // Sửa nội dung của một đoạn
+  const handleUpdateBlockText = (id: string, newText: string) => {
+    const updatedBlocks = blocks.map((b) => b.id === id ? { ...b, text: newText } : b);
+    setBlocks(updatedBlocks);
+    saveToDrive(updatedBlocks);
+  };
+
   return (
     <div ref={dragConstraintsRef} className="min-h-screen bg-[#0A0A0C] text-[#F5F5F7] flex flex-col font-sans antialiased overflow-hidden relative">
       
-      {/* Header */}
+      {/* Top Header */}
       <header className={`sticky top-0 z-40 backdrop-blur-xl bg-[#0A0A0C]/75 border-b border-appleBorder px-6 py-4 flex justify-between items-center transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-2 pointer-events-none" : "opacity-100"}`}>
         <div>
           <span className="text-[10px] text-zinc-500 font-medium tracking-wider uppercase">{greeting}</span>
@@ -181,7 +250,7 @@ function MuseApp() {
           </span>
         </div>
         <div className="flex items-center space-x-2">
-          <button onClick={() => syncWithDrive()} className="p-2 text-zinc-400 hover:text-white transition-colors relative">
+          <button onClick={syncWithDrive} className="p-2 text-zinc-400 hover:text-white transition-colors relative">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
             </svg>
@@ -190,8 +259,8 @@ function MuseApp() {
         </div>
       </header>
 
-      {/* Main Area */}
-      <main className="flex-1 overflow-y-auto px-6 py-6 pb-40">
+      {/* Main Content (Chế độ hiển thị phân đoạn dạng Khung Chat mượt mà) */}
+      <main className="flex-1 overflow-y-auto px-6 py-6 pb-52 space-y-5">
         <AnimatePresence mode="wait">
           {activeTab === "editor" ? (
             <motion.div key="editor" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
@@ -200,23 +269,52 @@ function MuseApp() {
                 value={title} 
                 onChange={(e) => setTitle(e.target.value)} 
                 onBlur={() => saveToDrive()}
-                className={`w-full bg-transparent text-2xl font-semibold font-serif text-white focus:outline-none placeholder-zinc-800 transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-1 pointer-events-none" : "opacity-100"}`} 
+                className={`w-full bg-transparent text-xl font-semibold font-serif text-white focus:outline-none placeholder-zinc-800 transition-all duration-700 ${isEditorFocused ? "opacity-5 transform -translate-y-1 pointer-events-none" : "opacity-100"}`} 
                 placeholder="Đặt tên cho tác phẩm..."
               />
-              <textarea
-                className="w-full min-h-[400px] bg-transparent text-zinc-300 text-[15px] leading-relaxed focus:outline-none resize-none placeholder-zinc-700 font-serif"
-                placeholder="Ghi lại những dòng cảm xúc, ý tưởng của bạn ở đây..."
-                value={currentStory}
-                onChange={(e) => setCurrentStory(e.target.value)}
-                onFocus={() => {
-                  setIsEditorFocused(true);
-                  triggerBubbleActive();
-                }}
-                onBlur={() => {
-                  setIsEditorFocused(false);
-                  saveToDrive();
-                }}
-              />
+              
+              {/* Danh sách các đoạn văn dạng Gemini Blocks */}
+              <div className="space-y-4">
+                {blocks.length === 0 ? (
+                  <p className="text-xs text-zinc-600 italic">Nhập ý tưởng của bạn ở bên dưới để bắt đầu câu chuyện...</p>
+                ) : (
+                  blocks.map((block) => (
+                    <motion.div
+                      key={block.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`relative group p-4 rounded-2xl border transition-all duration-300 ${
+                        block.type === "user" 
+                          ? "bg-transparent border-appleBorder" 
+                          : "bg-[#121214]/60 border-[#F43F5E]/10"
+                      }`}
+                    >
+                      {/* Badge phân biệt và nút Xóa phân đoạn */}
+                      <div className="flex justify-between items-center mb-1.5 text-[10px] tracking-wider text-zinc-500 uppercase">
+                        <span>{block.type === "user" ? "✍️ Bạn viết" : "🌸 AI Muse viết"}</span>
+                        <button 
+                          onClick={() => handleDeleteBlock(block.id)}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-zinc-600 hover:text-rose-400 transition-all duration-300"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                      
+                      {/* Cho phép chạm vào chỉnh sửa trực tiếp nội dung */}
+                      <textarea
+                        value={block.text}
+                        onChange={(e) => handleUpdateBlockText(block.id, e.target.value)}
+                        onFocus={() => setIsEditorFocused(true)}
+                        onBlur={() => setIsEditorFocused(false)}
+                        className="w-full bg-transparent text-zinc-300 text-[14.5px] leading-relaxed font-serif border-none outline-none focus:ring-0 resize-none h-auto min-h-[40px] overflow-hidden"
+                        rows={Math.max(block.text.split("\n").length, 1)}
+                      />
+                    </motion.div>
+                  ))
+                )}
+              </div>
             </motion.div>
           ) : activeTab === "library" ? (
             <motion.div key="library" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
@@ -252,16 +350,52 @@ function MuseApp() {
         </AnimatePresence>
       </main>
 
-      {/* Floating Prompt Bar */}
+      {/* Floating Prompt Bar & Dynamic Suggestions (Mũi tên đi xuống để tạm ẩn, hướng lên để mở) */}
       {activeTab === "editor" && (
         <div className={`fixed bottom-24 left-0 right-0 px-6 z-40 transition-all duration-700 ${isEditorFocused ? "opacity-5 transform translate-y-2 pointer-events-none" : "opacity-100"}`}>
-          <div className="max-w-md mx-auto space-y-3">
-            {/* Quick Moods Scroll Container */}
-            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-              <button onClick={() => handleGenerate("lãng mạn")} className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all">🌸 Thêm lãng mạn</button>
-              <button onClick={() => handleGenerate("tự nhiên")} className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all">✨ Viết tiếp tự nhiên</button>
-              <button onClick={() => handleGenerate("nội tâm")} className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all">💭 Đậm chất nội tâm</button>
-              <button onClick={() => handleGenerate("kịch tính")} className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all">🎭 Tạo kịch tính</button>
+          <div className="max-w-md mx-auto space-y-2.5">
+            
+            {/* Dynamic Suggestions Container */}
+            <div className="bg-[#121214]/65 border border-appleBorder rounded-2xl p-2 backdrop-blur-xl">
+              <div className="flex justify-between items-center px-1 mb-1 text-[9px] tracking-wider text-zinc-500 uppercase">
+                <span>Gợi ý sáng tác động</span>
+                <div className="flex items-center space-x-1.5">
+                  <button onClick={() => handleGetSuggestions()} className="hover:text-rose-300 transition-colors">
+                    {loadingSuggestions ? "Đang tạo..." : "🔄 Đổi gợi ý"}
+                  </button>
+                  {/* Nút mũi tên đi xuống để tạm ẩn / hướng lên để mở gợi ý */}
+                  <button 
+                    onClick={() => setIsSuggestionsCollapsed(!isSuggestionsCollapsed)} 
+                    className="p-0.5 text-zinc-500 hover:text-white transition-colors"
+                  >
+                    <svg className={`w-3.5 h-3.5 transform transition-transform duration-300 ${isSuggestionsCollapsed ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Danh sách gợi ý hoạt họa mượt mà */}
+              <AnimatePresence>
+                {!isSuggestionsCollapsed && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar"
+                  >
+                    {suggestions.map((sug, i) => (
+                      <button 
+                        key={i} 
+                        onClick={() => handleGenerate(sug)} 
+                        className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-[10.5px] px-3.5 py-1.5 rounded-full active:scale-95 transition-all hover:border-[#F43F5E]/30"
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             
             {/* Prompt Input Area */}
@@ -275,7 +409,11 @@ function MuseApp() {
                   setUserPrompt(e.target.value);
                   triggerBubbleActive();
                 }}
-                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleAddUserBlock();
+                  }
+                }}
               />
               <button onClick={() => handleGenerate()} className="bg-rose-400 text-black p-3 rounded-full hover:bg-rose-300 transition-all active:scale-95">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -296,120 +434,4 @@ function MuseApp() {
           </svg>
           <span className="text-[10px]">Nhà sáng tác</span>
         </button>
-        <button onClick={() => setActiveTab("library")} className={`flex flex-col items-center space-y-1 ${activeTab === "library" ? "text-rose-400" : "text-zinc-500"}`}>
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" />
-          </svg>
-          <span className="text-[10px]">Tủ sách</span>
-        </button>
-        <button onClick={() => setActiveTab("settings")} className={`flex flex-col items-center space-y-1 ${activeTab === "settings" ? "text-rose-400" : "text-zinc-500"}`}>
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-          </svg>
-          <span className="text-[10px]">Cấu hình</span>
-        </button>
-      </nav>
-
-      {/* Bong bóng di động Messenger thông minh */}
-      <AnimatePresence>
-        {aiStatusVisible && (
-          <motion.div
-            layout
-            drag
-            dragElastic={0.1}
-            dragConstraints={dragConstraintsRef}
-            onDragStart={triggerBubbleActive}
-            onDragEnd={handleDragEnd}
-            animate={bubbleControls}
-            initial={{ opacity: 0, y: 150, x: 16 }}
-            style={{
-              position: "fixed",
-              zIndex: 100,
-              bottom: "160px",
-              cursor: "grab",
-              touchAction: "none"
-            }}
-            className={`border border-appleBorder shadow-2xl backdrop-blur-xl overflow-hidden flex flex-col justify-between transition-opacity duration-700 ${
-              isIdle ? "opacity-50" : "opacity-100"
-            } ${
-              isStatusMinimized 
-                ? "bg-[#1C1C1E]/95 w-[52px] h-[52px] rounded-full p-0 flex items-center justify-center" 
-                : "bg-[#1C1C1E]/95 w-[280px] h-auto rounded-2xl p-3.5"
-            }`}
-          >
-            {isStatusMinimized ? (
-              // Trạng thái thu nhỏ: Nép sát lề, nhấp nháy nhè nhẹ
-              <div 
-                onClick={() => {
-                  triggerBubbleActive();
-                  setIsStatusMinimized(false);
-                }} 
-                className="flex items-center justify-center w-full h-full cursor-pointer"
-              >
-                <span className="relative flex h-2 w-2 mr-1">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                </span>
-                <svg className="w-4 h-4 text-rose-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-              </div>
-            ) : (
-              // Trạng thái mở rộng: Hiển thị tiến trình chi tiết
-              <div className="space-y-3 pointer-events-auto">
-                <div className="flex justify-between items-center pb-2 border-b border-appleBorder">
-                  <span className="text-[11px] font-semibold text-rose-300 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
-                    Trợ lý AI Muse
-                  </span>
-                  <div className="flex items-center space-x-1">
-                    {/* Mũi tên hướng lên trên đúng yêu cầu */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsStatusMinimized(true);
-                      }} 
-                      className="p-1 text-zinc-400 hover:text-white transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
-                      </svg>
-                    </button>
-                    {/* Nút đóng */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAiStatusVisible(false);
-                      }} 
-                      className="p-1 text-zinc-500 hover:text-white transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="space-y-1.5 text-[10px] text-zinc-400 font-mono max-h-[120px] overflow-y-auto leading-relaxed pr-1 no-scrollbar">
-                  {aiSteps.map((step, idx) => (
-                    <motion.div key={idx} initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }}>
-                      {step}
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-export default function Page() {
-  return (
-    <SessionProvider>
-      <MuseApp />
-    </SessionProvider>
-  );
-                    }
+        <button onClick={() => setActiveTab("library")} className={`flex flex-col items-center space-y-1 ${activeTab === "library" ?
