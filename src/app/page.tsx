@@ -10,14 +10,6 @@ interface StoryBlock {
   timestamp: string;
 }
 
-interface Story {
-  id: string;
-  title: string;
-  systemInstructions: string;
-  blocks: StoryBlock[];
-  updatedAt: string;
-}
-
 export default function Page() {
   return (
     <SessionProvider>
@@ -77,43 +69,6 @@ function MuseApp() {
     }
   }, [session]);
 
-  // 3. Tự động lưu trữ ngầm lên Google Drive khi có thay đổi (Nội dung, tiêu đề, hoặc bối cảnh nhân vật)
-  useEffect(() => {
-    if (!session || !isInitialLoaded || !activeStoryId) return;
-    
-    const delayDebounceFn = setTimeout(() => {
-      setSaving(true);
-      
-      // Cập nhật thông tin truyện đang viết vào danh sách tổng
-      const updatedStories = storiesList.map((story) => {
-        if (story.id === activeStoryId) {
-          const combinedContent = blocks.map((b) => b.text).join("\n\n");
-          return {
-            ...story,
-            title,
-            content: combinedContent,
-            systemInstructions,
-            blocks,
-            updatedAt: new Date().toISOString()
-          };
-        }
-        return story;
-      });
-
-      setStoriesList(updatedStories);
-
-      fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", stories: updatedStories })
-      })
-        .catch((err) => console.error(err))
-        .finally(() => setSaving(false));
-    }, 1500);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [blocks, systemInstructions, title, activeStoryId, session, isInitialLoaded]);
-
   function loadDataFromDrive() {
     fetch("/api/muse", {
       method: "POST",
@@ -124,10 +79,9 @@ function MuseApp() {
       .then((data) => {
         if (data.stories && data.stories.length > 0) {
           setStoriesList(data.stories);
-          // Mặc định nạp câu truyện đầu tiên trong danh sách lên màn hình
           const firstStory = data.stories[0];
           setBlocks(firstStory.blocks || []);
-          setTitle(storyTitle(firstStory));
+          setTitle(firstStory.title || "Truyện chưa đặt tên");
           setSystemInstructions(firstStory.systemInstructions || "");
           setActiveStoryId(firstStory.id);
         } else {
@@ -146,7 +100,7 @@ function MuseApp() {
           setBlocks([]);
           setSystemInstructions("");
         }
-        setIsInitialLoaded(true);
+        setIsInitialLoaded(true); // Đã nạp xong dữ liệu gốc của bạn từ Drive
       })
       .catch((err) => {
         console.error(err);
@@ -154,104 +108,19 @@ function MuseApp() {
       });
   }
 
-  function storyTitle(story: any) {
-    return story.title || "Tác phẩm chưa đặt tên";
-  }
-
-  // TẠO TÁC PHẨM MỚI (Tủ sách Multi-Story)
-  function handleCreateNewStory() {
-    const newStoryId = "story_" + Date.now();
-    const newStory = {
-      id: newStoryId,
-      title: "Tác phẩm mới",
-      systemInstructions: "",
-      blocks: [],
-      updatedAt: new Date().toISOString()
-    };
-
-    const updatedStories = [newStory, ...storiesList];
-    setStoriesList(updatedStories);
-    setActiveStoryId(newStoryId);
-
-    // Reset lại toàn bộ Editor sang truyện mới trống
-    setTitle("Tác phẩm mới");
-    setSystemInstructions("");
-    setBlocks([]);
-
-    // Chuyển sang tab soạn thảo ngay lập tức
-    setActiveTab("editor");
-
-    // Tiến hành lưu lên Google Drive ngay để giữ tệp
-    if (session) {
-      setSaving(true);
-      fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", stories: updatedStories })
-      })
-        .catch((err) => console.error(err))
-        .finally(() => setSaving(false));
-    }
-  }
-
-  // Chọn tác phẩm từ thư viện để chuyển đổi qua lại
-  function handleSelectStory(story: any) {
-    setActiveStoryId(story.id);
-    setTitle(storyTitle(story));
-    setSystemInstructions(story.systemInstructions || "");
-    setBlocks(story.blocks || []);
-    setActiveTab("editor");
-  }
-
-  // Xóa hoàn toàn một tác phẩm khỏi Google Drive (Đã sửa lỗi gọi trùng hàm ở cuối)
-  function handleDeleteStory(storyId: any, event: any) {
-    event.stopPropagation(); // Ngăn sự kiện click vào thẻ truyện
-    const confirmDelete = confirm("Bạn có chắc chắn muốn xóa hoàn toàn tác phẩm này không?");
-    if (!confirmDelete) return;
-
-    const updatedStories = storiesList.filter((s) => s.id !== storyId);
-    setStoriesList(updatedStories);
-
-    // Nếu xóa đúng truyện đang mở, chuyển sang truyện khác hoặc reset rỗng
-    if (activeStoryId === storyId) {
-      if (updatedStories.length > 0) {
-        const nextStory = updatedStories[0];
-        setActiveStoryId(nextStory.id);
-        setTitle(storyTitle(nextStory));
-        setSystemInstructions(nextStory.systemInstructions || "");
-        setBlocks(nextStory.blocks || []);
-      } else {
-        setActiveStoryId("");
-        setTitle("Chưa có tác phẩm");
-        setSystemInstructions("");
-        setBlocks([]);
-      }
-    }
-
-    // Đồng bộ trực tiếp danh sách đã xóa lên Google Drive
-    if (session) {
-      setSaving(true);
-      fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", stories: updatedStories })
-      })
-        .catch((err) => console.error(err))
-        .finally(() => setSaving(false));
-    }
-  }
-
-  function saveToDrive(updatedBlocks = blocks, updatedSystem = systemInstructions) {
+  // HÀM LƯU TRỮ TẬP TRUNG (Chủ động kích hoạt lưu ngay lập tức khi phát sinh thay đổi thực tế)
+  function updateStoryAndSave(updatedBlocks: StoryBlock[], updatedInstructions: string, updatedTitle: string) {
     if (!session || !isInitialLoaded || !activeStoryId) return;
     setSaving(true);
+
     const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
     const updatedStories = storiesList.map((story) => {
       if (story.id === activeStoryId) {
         return {
           ...story,
-          title,
+          title: updatedTitle,
           content: combinedContent,
-          systemInstructions: updatedSystem,
+          systemInstructions: updatedInstructions,
           blocks: updatedBlocks,
           updatedAt: new Date().toISOString()
         };
@@ -270,12 +139,79 @@ function MuseApp() {
       .finally(() => setSaving(false));
   }
 
-  function syncWithDrive() {
-    if (!session) {
-      signIn("google");
-      return;
+  // TẠO TÁC PHẨM MỚI (Multi-Story)
+  function handleCreateNewStory() {
+    const newStoryId = "story_" + Date.now();
+    const newStory = {
+      id: newStoryId,
+      title: "Tác phẩm mới",
+      systemInstructions: "",
+      blocks: [],
+      updatedAt: new Date().toISOString()
+    };
+
+    const updatedStories = [newStory, ...storiesList];
+    setStoriesList(updatedStories);
+    setActiveStoryId(newStoryId);
+
+    setTitle("Tác phẩm mới");
+    setSystemInstructions("");
+    setBlocks([]);
+    setActiveTab("editor");
+
+    if (session) {
+      setSaving(true);
+      fetch("/api/muse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", stories: updatedStories })
+      })
+        .catch((err) => console.error(err))
+        .finally(() => setSaving(false));
     }
-    saveToDrive();
+  }
+
+  function handleSelectStory(story: any) {
+    setActiveStoryId(story.id);
+    setTitle(story.title || "Tác phẩm chưa đặt tên");
+    setSystemInstructions(story.systemInstructions || "");
+    setBlocks(story.blocks || []);
+    setActiveTab("editor");
+  }
+
+  function handleDeleteStory(storyId: any, event: any) {
+    event.stopPropagation();
+    const confirmDelete = confirm("Bạn có chắc chắn muốn xóa hoàn toàn tác phẩm này không?");
+    if (!confirmDelete) return;
+
+    const updatedStories = storiesList.filter((s) => s.id !== storyId);
+    setStoriesList(updatedStories);
+
+    if (activeStoryId === storyId) {
+      if (updatedStories.length > 0) {
+        const nextStory = updatedStories[0];
+        setActiveStoryId(nextStory.id);
+        setTitle(nextStory.title || "Tác phẩm chưa đặt tên");
+        setSystemInstructions(nextStory.systemInstructions || "");
+        setBlocks(nextStory.blocks || []);
+      } else {
+        setActiveStoryId("");
+        setTitle("Chưa có tác phẩm");
+        setSystemInstructions("");
+        setBlocks([]);
+      }
+    }
+
+    if (session) {
+      setSaving(true);
+      fetch("/api/muse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", stories: updatedStories })
+      })
+        .catch((err) => console.error(err))
+        .finally(() => setSaving(false));
+    }
   }
 
   function handleGetSuggestions(currentBlocks = blocks) {
@@ -343,7 +279,7 @@ function MuseApp() {
           const finalBlocks = [...updatedBlocks, aiBlock];
           setBlocks(finalBlocks);
           
-          saveToDrive(finalBlocks, systemInstructions);
+          updateStoryAndSave(finalBlocks, systemInstructions, title); // Gọi lưu trực tiếp
           handleGetSuggestions(finalBlocks);
         }
       })
@@ -358,14 +294,14 @@ function MuseApp() {
   function handleDeleteBlock(id: any) {
     const updatedBlocks = blocks.filter((b) => b.id !== id);
     setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks, systemInstructions);
+    updateStoryAndSave(updatedBlocks, systemInstructions, title);
     handleGetSuggestions(updatedBlocks);
   }
 
   function handleUpdateBlockText(id: any, newText: any) {
     const updatedBlocks = blocks.map((b) => b.id === id ? { ...b, text: newText } : b);
     setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks, systemInstructions);
+    updateStoryAndSave(updatedBlocks, systemInstructions, title);
   }
 
   // Khai báo trước hằng số class phẳng bảo vệ tuyệt đối trình biên dịch
@@ -402,7 +338,7 @@ function MuseApp() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto px-6 py-6 pb-60 space-y-5">
         
-        {/* TAB THƯ VIỆN (MULTIPLE STORIES SUPPORT) */}
+        {/* TAB THƯ VIỆN */}
         {activeTab === "library" && (
           <div className="space-y-4">
             <div className="flex justify-between items-center mb-2">
@@ -424,7 +360,7 @@ function MuseApp() {
                   className="p-4 rounded-2xl bg-[#121214] border border-appleBorder cursor-pointer active:scale-98 transition-all flex justify-between items-center"
                 >
                   <div className="space-y-1">
-                    <p className="text-white font-serif font-medium text-sm">{storyTitle(story)}</p>
+                    <p className="text-white font-serif font-medium text-sm">{story.title || "Tác phẩm chưa đặt tên"}</p>
                     <p className="text-[10px] text-zinc-500">Cập nhật: {new Date(story.updatedAt).toLocaleDateString("vi-VN")} lúc {new Date(story.updatedAt).toLocaleTimeString("vi-VN", {hour: "2-digit", minute:"2-digit"})}</p>
                   </div>
                   <button 
@@ -448,7 +384,7 @@ function MuseApp() {
               <p className="text-xs text-zinc-500 leading-relaxed">Đồng bộ tự động tác phẩm của bạn trực tiếp lên bộ nhớ đám mây riêng tư của tài khoản Google cá nhân.</p>
               {session ? (
                 <div className="flex flex-col space-y-2">
-                  <p className="text-xs text-zinc-400">Đã đồng bộ với: {session.user?.email}</p>
+                  <p className="text-xs text-zinc-400">Đã liên kết: {session.user?.email}</p>
                   <button onClick={() => signOut()} className="w-full bg-zinc-800 text-white text-xs font-medium py-3 rounded-xl">Đăng xuất</button>
                 </div>
               ) : (
@@ -465,7 +401,10 @@ function MuseApp() {
             <input 
               type="text" 
               value={title} 
-              onChange={(e) => setTitle(e.target.value)} 
+              onChange={(e) => {
+                setTitle(e.target.value);
+                updateStoryAndSave(blocks, systemInstructions, e.target.value);
+              }} 
               onBlur={() => saveToDrive()}
               className={titleInputClass}
               placeholder="Đặt tên cho tác phẩm..."
@@ -486,7 +425,10 @@ function MuseApp() {
                 <div className="mt-2">
                   <textarea
                     value={systemInstructions}
-                    onChange={(e) => setSystemInstructions(e.target.value)}
+                    onChange={(e) => {
+                      setSystemInstructions(e.target.value);
+                      updateStoryAndSave(blocks, e.target.value, title);
+                    }}
                     placeholder="Nhập vai các nhân vật tại đây để định hướng AI phóng tác..."
                     className="w-full h-32 bg-black/40 border border-appleBorder rounded-xl p-3 text-xs text-zinc-300 placeholder-zinc-700 leading-relaxed focus:outline-none font-serif"
                   />
