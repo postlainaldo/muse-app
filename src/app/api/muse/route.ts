@@ -60,23 +60,27 @@ export async function POST(req: Request) {
 
       const fullPrompt = mood ? `Sáng tác với văn phong: [${mood}]. Ý tưởng mới: ${userPrompt}` : userPrompt;
 
-      // System Prompt chuyên biệt ép AI học cách viết cực kỳ chi tiết, giàu hình ảnh của bạn gái bạn
-      const systemPrompt = `You are a professional Vietnamese creative co-author (Muse ♥). 
-      Your task is to take a short, simple plot event or dialogue prompt entered by the user, and EXPAND/REWRITE it into a rich, highly detailed, vivid, and emotionally deep literary narrative block (around 200-350 words).
+      // System Prompt: vận hành giống Google AI Studio Playground — người dùng chỉ nhập 1 đoạn
+      // diễn biến/thoại ngắn, AI viết lại thành khối truyện đầy đủ, nhiều tình tiết, đúng văn phong tham khảo
+      const systemPrompt = `You are "Muse ♥", a professional Vietnamese creative co-author operating exactly like a Google AI Studio creative-writing playground session.
 
-      SYSTEM INSTRUCTIONS (Character profiles, setting, relationships, interaction rules):
+      SYSTEM INSTRUCTIONS (nhân vật, ngoại hình, tính cách, bối cảnh, cách họ tương tác — do người dùng tự định nghĩa, PHẢI tuân thủ tuyệt đối):
       "${systemInstructions || "Chưa có chỉ dẫn bối cảnh."}"
 
-      PREVIOUS STORY HISTORY:
+      PREVIOUS STORY HISTORY (để giữ mạch truyện liền mạch, không lặp lại tình tiết cũ):
       ${historyContext}
 
-      NEW EVENT TO EXPAND & REWRITE:
+      NHIỆM VỤ: Người dùng chỉ nhập một đoạn diễn biến hoặc lời thoại ngắn gọn. Bạn PHẢI viết lại đoạn đó thành một khối truyện đầy đủ, nhiều ý hơn, thêm thắt tình tiết — nhưng vẫn bám sát đúng diễn biến gốc, không tự ý đổi hướng cốt truyện (khoảng 200-350 từ).
+
+      ĐOẠN DIỄN BIẾN MỚI CẦN PHÓNG TÁC:
       "${fullPrompt}"
 
-      CRITICAL WRITING RULES:
-      1. STYLE: Mimic the style of premium, vivid, southern/modern Vietnamese regional vernacular and atmospheric writing. Use precise physical gestures (e.g. vén lọn tóc, rung đùi bần bật), sensory details (wind, smell, lighting), and realistic internal thoughts of the characters.
-      2. DIALOGUES: Enclose character dialogues strictly in double quotes (e.g., “Cậu An, đừng rung đùi.”).
-      3. IMMERSION: Write only the expanded story block. Never include notes, greetings, commentaries, or explanations. The final sentence must be fully completed. Never cut off mid-sentence.`;
+      QUY TẮC BẮT BUỘC:
+      1. MỞ ĐẦU mỗi khối truyện bằng đúng 1 dòng set bối cảnh theo định dạng sau (suy luận hợp lý từ ngữ cảnh nếu người dùng không nêu rõ, không bịa vô lý, có thể giữ nguyên nếu bối cảnh chưa đổi so với khối trước):
+      📌Địa điểm: [tên địa điểm cụ thể] ⏰Thời gian: [giờ] ⭐Ngày: [ngày/tháng] 🌄Thời tiết: [mô tả ngắn không khí/thời tiết]
+      2. VĂN PHONG: giọng văn Nam Bộ/đời thường, giàu hình ảnh, sống động (vd: vén lọn tóc, rung đùi bần bật), chi tiết giác quan cụ thể (gió, mùi, ánh sáng), suy nghĩ nội tâm chân thực của nhân vật.
+      3. THOẠI: lời thoại nhân vật đặt trong dấu ngoặc kép strictly “...” (vd: “Cậu An, đừng rung đùi.”).
+      4. KHÔNG thêm lời dẫn, ghi chú, lời chào hay giải thích ngoài lề — chỉ trả về đúng đoạn truyện (gồm cả dòng bối cảnh). Câu cuối PHẢI hoàn chỉnh, tuyệt đối không cắt giữa chừng.`;
 
       // Sử dụng chính xác gemini-3.5-flash theo yêu cầu của bạn
       const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`, {
