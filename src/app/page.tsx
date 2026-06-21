@@ -70,7 +70,7 @@ function MuseApp() {
     }
   }, []);
 
-  // 2. Tải toàn bộ danh sách truyện từ Google Drive sau khi liên kết thành công
+  // 2. Tải dữ liệu từ Google Drive sau khi liên kết thành công
   useEffect(() => {
     if (session) {
       loadDataFromDrive();
@@ -129,7 +129,7 @@ function MuseApp() {
           setBlocks(firstStory.blocks || []);
           setTitle(storyTitle(firstStory));
           setSystemInstructions(firstStory.systemInstructions || "");
-          setActiveStoryId(firstStory.id); // Đã loại bỏ dòng gọi setBubbleX bị lỗi ở đây
+          setActiveStoryId(firstStory.id);
         } else {
           // Nếu Drive trống, tự khởi tạo tác phẩm đầu tiên
           const defaultId = "story_" + Date.now();
@@ -203,7 +203,7 @@ function MuseApp() {
     setActiveTab("editor");
   }
 
-  // Xóa hoàn toàn một tác phẩm khỏi Google Drive
+  // Xóa hoàn toàn một tác phẩm khỏi Google Drive (Đã sửa lỗi gọi trùng hàm ở cuối)
   function handleDeleteStory(storyId: any, event: any) {
     event.stopPropagation(); // Ngăn sự kiện click vào thẻ truyện
     const confirmDelete = confirm("Bạn có chắc chắn muốn xóa hoàn toàn tác phẩm này không?");
@@ -227,12 +227,145 @@ function MuseApp() {
         setBlocks([]);
       }
     }
-    saveToDrive(updatedStories, systemInstructions);
+
+    // Đồng bộ trực tiếp danh sách đã xóa lên Google Drive
+    if (session) {
+      setSaving(true);
+      fetch("/api/muse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", stories: updatedStories })
+      })
+        .catch((err) => console.error(err))
+        .finally(() => setSaving(false));
+    }
+  }
+
+  function saveToDrive(updatedBlocks = blocks, updatedSystem = systemInstructions) {
+    if (!session || !isInitialLoaded || !activeStoryId) return;
+    setSaving(true);
+    const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
+    const updatedStories = storiesList.map((story) => {
+      if (story.id === activeStoryId) {
+        return {
+          ...story,
+          title,
+          content: combinedContent,
+          systemInstructions: updatedSystem,
+          blocks: updatedBlocks,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return story;
+    });
+
+    setStoriesList(updatedStories);
+
+    fetch("/api/muse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "save", stories: updatedStories })
+    })
+      .catch((err) => console.error(err))
+      .finally(() => setSaving(false));
+  }
+
+  function syncWithDrive() {
+    if (!session) {
+      signIn("google");
+      return;
+    }
+    saveToDrive();
+  }
+
+  function handleGetSuggestions(currentBlocks = blocks) {
+    setLoadingSuggestions(true);
+    fetch("/api/muse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "suggest", currentStory: currentBlocks.map((b) => b.text).join("\n\n") })
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.suggestions) {
+          setSuggestions(data.suggestions);
+        }
+      })
+      .catch((err) => console.error(err))
+      .finally(() => setLoadingSuggestions(false));
+  }
+
+  function handleGenerate(moodType?: any) {
+    const promptToSend = moodType || userPrompt;
+    if (!promptToSend.trim() || loading || !activeStoryId) return;
+
+    setLoading(true);
+
+    const userBlock: StoryBlock = {
+      id: "user_" + Date.now(),
+      type: "user",
+      text: promptToSend,
+      timestamp: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+    };
+
+    const updatedBlocks = [...blocks, userBlock];
+    setBlocks(updatedBlocks);
+    setUserPrompt("");
+
+    fetch("/api/muse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        action: "generate", 
+        title,
+        systemInstructions,
+        blocks: updatedBlocks, 
+        userPrompt: promptToSend 
+      })
+    })
+      .then((res) => {
+        if (res.status !== 200) {
+          throw new Error("Lỗi kết nối máy chủ AI.");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        if (data.text) {
+          const aiBlock: StoryBlock = {
+            id: "ai_" + Date.now(),
+            type: "ai",
+            text: data.text,
+            timestamp: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
+          };
+          const finalBlocks = [...updatedBlocks, aiBlock];
+          setBlocks(finalBlocks);
+          
+          saveToDrive(finalBlocks, systemInstructions);
+          handleGetSuggestions(finalBlocks);
+        }
+      })
+      .catch((err) => {
+        alert("Lỗi: " + (err.message || "Gặp sự cố."));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }
+
+  function handleDeleteBlock(id: any) {
+    const updatedBlocks = blocks.filter((b) => b.id !== id);
+    setBlocks(updatedBlocks);
+    saveToDrive(updatedBlocks, systemInstructions);
+    handleGetSuggestions(updatedBlocks);
   }
 
   function handleUpdateBlockText(id: any, newText: any) {
     const updatedBlocks = blocks.map((b) => b.id === id ? { ...b, text: newText } : b);
     setBlocks(updatedBlocks);
+    saveToDrive(updatedBlocks, systemInstructions);
   }
 
   // Khai báo trước hằng số class phẳng bảo vệ tuyệt đối trình biên dịch
