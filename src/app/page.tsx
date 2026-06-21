@@ -82,33 +82,7 @@ function MuseApp() {
     if (!session || !isInitialLoaded || !activeStoryId) return;
     
     const delayDebounceFn = setTimeout(() => {
-      setSaving(true);
-      
-      // Cập nhật thông tin truyện đang viết vào danh sách tổng
-      const updatedStories = storiesList.map((story) => {
-        if (story.id === activeStoryId) {
-          const combinedContent = blocks.map((b) => b.text).join("\n\n");
-          return {
-            ...story,
-            title,
-            content: combinedContent,
-            systemInstructions,
-            blocks,
-            updatedAt: new Date().toISOString()
-          };
-        }
-        return story;
-      });
-
-      setStoriesList(updatedStories);
-
-      fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", stories: updatedStories })
-      })
-        .catch((err) => console.error(err))
-        .finally(() => setSaving(false));
+      updateStoryAndSave(blocks, systemInstructions, title);
     }, 1500);
 
     return () => clearTimeout(delayDebounceFn);
@@ -170,7 +144,7 @@ function MuseApp() {
           ...story,
           title: updatedTitle,
           content: combinedContent,
-          systemInstructions: updatedSystem,
+          systemInstructions: updatedInstructions, // Đã sửa tên biến updatedSystem thành updatedInstructions chính xác ở đây
           blocks: updatedBlocks,
           updatedAt: new Date().toISOString()
         };
@@ -189,42 +163,13 @@ function MuseApp() {
       .finally(() => setSaving(false));
   }
 
-  function saveToDrive(updatedBlocks = blocks, updatedSystem = systemInstructions) {
-    if (!session || !isInitialLoaded || !activeStoryId) return;
-    setSaving(true);
-    const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
-    const updatedStories = storiesList.map((story) => {
-      if (story.id === activeStoryId) {
-        return {
-          ...story,
-          title,
-          content: combinedContent,
-          systemInstructions: updatedSystem,
-          blocks: updatedBlocks,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return story;
-    });
-
-    setStoriesList(updatedStories);
-
-    fetch("/api/muse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "save", stories: updatedStories })
-    })
-      .catch((err) => console.error(err))
-      .finally(() => setSaving(false));
-  }
-
-  // Hàm thủ công đồng bộ đám mây (Đã bổ sung sửa lỗi compile)
+  // Hàm thủ công đồng bộ đám mây
   function syncWithDrive() {
     if (!session) {
       signIn("google");
       return;
     }
-    saveToDrive(blocks, systemInstructions);
+    updateStoryAndSave(blocks, systemInstructions, title);
   }
 
   // TẠO TÁC PHẨM MỚI (Tủ sách Multi-Story)
@@ -242,11 +187,15 @@ function MuseApp() {
     setStoriesList(updatedStories);
     setActiveStoryId(newStoryId);
 
+    // Reset lại toàn bộ Editor sang truyện mới trống
     setTitle("Tác phẩm mới");
     setSystemInstructions("");
     setBlocks([]);
+
+    // Chuyển sang tab soạn thảo ngay lập tức
     setActiveTab("editor");
 
+    // Tiến hành lưu lên Google Drive ngay để giữ tệp
     if (session) {
       setSaving(true);
       fetch("/api/muse", {
@@ -259,27 +208,30 @@ function MuseApp() {
     }
   }
 
+  // Chọn tác phẩm từ thư viện để chuyển đổi qua lại
   function handleSelectStory(story: any) {
     setActiveStoryId(story.id);
-    setTitle(story.title || "Tác phẩm chưa đặt tên");
+    setTitle(storyTitle(story));
     setSystemInstructions(story.systemInstructions || "");
     setBlocks(story.blocks || []);
     setActiveTab("editor");
   }
 
+  // Xóa hoàn toàn một tác phẩm khỏi Google Drive
   function handleDeleteStory(storyId: any, event: any) {
-    event.stopPropagation();
+    event.stopPropagation(); // Ngăn sự kiện click vào thẻ truyện
     const confirmDelete = confirm("Bạn có chắc chắn muốn xóa hoàn toàn tác phẩm này không?");
     if (!confirmDelete) return;
 
     const updatedStories = storiesList.filter((s) => s.id !== storyId);
     setStoriesList(updatedStories);
 
+    // Nếu xóa đúng truyện đang mở, chuyển sang truyện khác hoặc reset rỗng
     if (activeStoryId === storyId) {
       if (updatedStories.length > 0) {
         const nextStory = updatedStories[0];
         setActiveStoryId(nextStory.id);
-        setTitle(nextStory.title || "Tác phẩm chưa đặt tên");
+        setTitle(storyTitle(nextStory));
         setSystemInstructions(nextStory.systemInstructions || "");
         setBlocks(nextStory.blocks || []);
       } else {
@@ -290,6 +242,7 @@ function MuseApp() {
       }
     }
 
+    // Đồng bộ trực tiếp danh sách đã xóa lên Google Drive
     if (session) {
       setSaving(true);
       fetch("/api/muse", {
@@ -367,7 +320,7 @@ function MuseApp() {
           const finalBlocks = [...updatedBlocks, aiBlock];
           setBlocks(finalBlocks);
           
-          saveToDrive(finalBlocks, systemInstructions);
+          updateStoryAndSave(finalBlocks, systemInstructions, title);
           handleGetSuggestions(finalBlocks);
         }
       })
@@ -382,14 +335,14 @@ function MuseApp() {
   function handleDeleteBlock(id: any) {
     const updatedBlocks = blocks.filter((b) => b.id !== id);
     setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks, systemInstructions);
+    updateStoryAndSave(updatedBlocks, systemInstructions, title);
     handleGetSuggestions(updatedBlocks);
   }
 
   function handleUpdateBlockText(id: any, newText: any) {
     const updatedBlocks = blocks.map((b) => b.id === id ? { ...b, text: newText } : b);
     setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks, systemInstructions);
+    updateStoryAndSave(updatedBlocks, systemInstructions, title);
   }
 
   // Khai báo trước hằng số class phẳng bảo vệ tuyệt đối trình biên dịch
@@ -426,7 +379,7 @@ function MuseApp() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto px-6 py-6 pb-60 space-y-5">
         
-        {/* TAB THƯ VIỆN */}
+        {/* TAB THƯ VIỆN (MULTIPLE STORIES SUPPORT) */}
         {activeTab === "library" && (
           <div className="space-y-4">
             <div className="flex justify-between items-center mb-2">
@@ -493,7 +446,7 @@ function MuseApp() {
                 setTitle(e.target.value);
                 updateStoryAndSave(blocks, systemInstructions, e.target.value);
               }} 
-              onBlur={() => saveToDrive()}
+              onBlur={() => updateStoryAndSave(blocks, systemInstructions, title)}
               className={titleInputClass}
               placeholder="Đặt tên cho tác phẩm..."
             />
@@ -517,6 +470,7 @@ function MuseApp() {
                       setSystemInstructions(e.target.value);
                       updateStoryAndSave(blocks, e.target.value, title);
                     }}
+                    onBlur={() => updateStoryAndSave(blocks, systemInstructions, title)}
                     placeholder="Nhập vai các nhân vật tại đây để định hướng AI phóng tác..."
                     className="w-full h-32 bg-black/40 border border-appleBorder rounded-xl p-3 text-xs text-zinc-300 placeholder-zinc-700 leading-relaxed focus:outline-none font-serif"
                   />
@@ -552,7 +506,7 @@ function MuseApp() {
                       onFocus={() => setIsEditorFocused(true)}
                       onBlur={() => {
                         setIsEditorFocused(false);
-                        saveToDrive();
+                        updateStoryAndSave(blocks, systemInstructions, title);
                       }}
                       className="w-full bg-transparent text-[#E5E5EA] text-[15px] leading-relaxed font-serif border-none outline-none focus:ring-0 resize-none h-auto overflow-hidden"
                       rows={Math.max(block.text.split("\n").length, 1)}
