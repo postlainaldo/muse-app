@@ -21,12 +21,12 @@ interface Story {
 export default function Page() {
   return (
     <SessionProvider>
-      <MuseContent />
+      <MuseApp />
     </SessionProvider>
   );
 }
 
-function MuseContent() {
+function MuseApp() {
   const { data: session } = useSession();
   const [storiesList, setStoriesList] = useState([] as any[]); // Danh sách tất cả truyện tải từ Drive
   const [activeStoryId, setActiveStoryId] = useState("" as any); // ID của truyện đang viết
@@ -129,8 +129,7 @@ function MuseContent() {
           setBlocks(firstStory.blocks || []);
           setTitle(storyTitle(firstStory));
           setSystemInstructions(firstStory.systemInstructions || "");
-          setBubbleX(firstStory.id || ""); // Dùng làm ID active tạm thời
-          setActiveStoryId(firstStory.id);
+          setActiveStoryId(firstStory.id); // Đã loại bỏ dòng gọi setBubbleX bị lỗi ở đây
         } else {
           // Nếu Drive trống, tự khởi tạo tác phẩm đầu tiên
           const defaultId = "story_" + Date.now();
@@ -228,139 +227,7 @@ function MuseContent() {
         setBlocks([]);
       }
     }
-
-    // Đồng bộ danh sách đã xóa lên Google Drive
-    if (session) {
-      setSaving(true);
-      fetch("/api/muse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", stories: updatedStories })
-      })
-        .catch((err) => console.error(err))
-        .finally(() => setSaving(false));
-    }
-  }
-
-  function saveToDrive(updatedBlocks = blocks, updatedSystem = systemInstructions) {
-    if (!session || !isInitialLoaded || !activeStoryId) return;
-    setSaving(true);
-    const combinedContent = updatedBlocks.map((b) => b.text).join("\n\n");
-    const updatedStories = storiesList.map((story) => {
-      if (story.id === activeStoryId) {
-        return {
-          ...story,
-          title,
-          content: combinedContent,
-          systemInstructions: updatedSystem,
-          blocks: updatedBlocks,
-          updatedAt: new Date().toISOString()
-        };
-      }
-      return story;
-    });
-
-    setStoriesList(updatedStories);
-
-    fetch("/api/muse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "save", stories: updatedStories })
-    })
-      .catch((err) => console.error(err))
-      .finally(() => setSaving(false));
-  }
-
-  function syncWithDrive() {
-    if (!session) {
-      signIn("google");
-      return;
-    }
-    saveToDrive();
-  }
-
-  function handleGetSuggestions(currentBlocks = blocks) {
-    setLoadingSuggestions(true);
-    fetch("/api/muse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "suggest", currentStory: currentBlocks.map((b) => b.text).join("\n\n") })
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.suggestions) {
-          setSuggestions(data.suggestions);
-        }
-      })
-      .catch((err) => console.error(err))
-      .finally(() => setLoadingSuggestions(false));
-  }
-
-  function handleGenerate(moodType?: any) {
-    const promptToSend = moodType || userPrompt;
-    if (!promptToSend.trim() || loading || !activeStoryId) return;
-
-    setLoading(true);
-
-    const userBlock: StoryBlock = {
-      id: "user_" + Date.now(),
-      type: "user",
-      text: promptToSend,
-      timestamp: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
-    };
-
-    const updatedBlocks = [...blocks, userBlock];
-    setBlocks(updatedBlocks);
-    setUserPrompt("");
-
-    fetch("/api/muse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        action: "generate", 
-        title,
-        systemInstructions,
-        blocks: updatedBlocks, 
-        userPrompt: promptToSend 
-      })
-    })
-      .then((res) => {
-        if (res.status !== 200) {
-          throw new Error("Lỗi kết nối máy chủ AI.");
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (data.error) {
-          throw new Error(data.error);
-        }
-        if (data.text) {
-          const aiBlock: StoryBlock = {
-            id: "ai_" + Date.now(),
-            type: "ai",
-            text: data.text,
-            timestamp: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })
-          };
-          const finalBlocks = [...updatedBlocks, aiBlock];
-          setBlocks(finalBlocks);
-          
-          saveToDrive(finalBlocks, systemInstructions);
-          handleGetSuggestions(finalBlocks);
-        }
-      })
-      .catch((err) => {
-        alert("Lỗi: " + (err.message || "Gặp sự cố."));
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }
-
-  function handleDeleteBlock(id: any) {
-    const updatedBlocks = blocks.filter((b) => b.id !== id);
-    setBlocks(updatedBlocks);
-    saveToDrive(updatedBlocks, systemInstructions);
-    handleGetSuggestions(updatedBlocks);
+    saveToDrive(updatedStories, systemInstructions);
   }
 
   function handleUpdateBlockText(id: any, newText: any) {
@@ -407,7 +274,6 @@ function MuseContent() {
           <div className="space-y-4">
             <div className="flex justify-between items-center mb-2">
               <h2 className="text-sm font-medium text-white">Thư viện tác phẩm</h2>
-              {/* Nút Tạo tác phẩm mới bổ sung hoàn thiện */}
               <button 
                 onClick={handleCreateNewStory}
                 className="text-xs bg-rose-500/15 border border-rose-500/20 text-rose-300 rounded-full px-4 py-1.5 active:scale-95 transition-all"
@@ -416,7 +282,7 @@ function MuseContent() {
               </button>
             </div>
             {storiesList.length === 0 ? (
-              <p className="text-xs text-zinc-500">Chưa có tác phẩm nào được lưu trữ.</p>
+              <p className="text-xs text-zinc-500">Chưa có tác phẩm nào được lưu trữ đám mây.</p>
             ) : (
               storiesList.map((story) => (
                 <div 
@@ -428,7 +294,6 @@ function MuseContent() {
                     <p className="text-white font-serif font-medium text-sm">{storyTitle(story)}</p>
                     <p className="text-[10px] text-zinc-500">Cập nhật: {new Date(story.updatedAt).toLocaleDateString("vi-VN")} lúc {new Date(story.updatedAt).toLocaleTimeString("vi-VN", {hour: "2-digit", minute:"2-digit"})}</p>
                   </div>
-                  {/* Nút Xóa tác phẩm hoàn chỉnh */}
                   <button 
                     onClick={(e) => handleDeleteStory(story.id, e)}
                     className="p-2 text-zinc-600 hover:text-rose-400 transition-colors"
@@ -446,21 +311,21 @@ function MuseContent() {
           <div className="space-y-6">
             <h2 className="text-sm font-medium text-white">Cài đặt hệ thống</h2>
             <div className="bg-[#121214] p-5 rounded-2xl border border-appleBorder space-y-3">
-              <h3 className="text-xs font-semibold text-rose-300">Sao lưu Google Drive</h3>
-              <p className="text-xs text-zinc-500 leading-relaxed">Tự động sao lưu lên đám mây cá nhân của bạn.</p>
+              <h3 className="text-xs font-semibold text-rose-300">Sao lưu đám mây Google Drive</h3>
+              <p className="text-xs text-zinc-500 leading-relaxed">Đồng bộ tự động tác phẩm của bạn trực tiếp lên bộ nhớ đám mây riêng tư của tài khoản Google cá nhân.</p>
               {session ? (
                 <div className="flex flex-col space-y-2">
-                  <p className="text-xs text-zinc-400">Đã liên kết: {session.user?.email}</p>
+                  <p className="text-xs text-zinc-400">Đã đồng bộ với: {session.user?.email}</p>
                   <button onClick={() => signOut()} className="w-full bg-zinc-800 text-white text-xs font-medium py-3 rounded-xl">Đăng xuất</button>
                 </div>
               ) : (
-                <button onClick={() => signIn("google")} className="w-full bg-white text-black text-xs font-semibold py-3 rounded-xl">Liên kết tài khoản</button>
+                <button onClick={() => signIn("google")} className="w-full bg-white text-black text-xs font-semibold py-3 rounded-xl">Liên kết tài khoản Google</button>
               )}
             </div>
           </div>
         )}
 
-        {/* TAB NHÀ SÁNG TÁC (GOOGLE AI STUDIO CANVAS STYLE) */}
+        {/* TAB NHÀ SÁNG TÁC */}
         {activeTab === "editor" && (
           <div className="space-y-4">
             
@@ -500,7 +365,7 @@ function MuseContent() {
             <div className="space-y-6">
               {blocks.length === 0 ? (
                 <div className="text-center py-20 text-zinc-600 italic text-xs space-y-2">
-                  <p>Mạch truyện đang trống. Nhập lời thoại thô ở dưới để bắt đầu.</p>
+                  <p>Mạch truyện của bạn đang trống.<br />Nhập lời thoại hoặc ý tưởng thô đầu tiên của bạn vào hộp thoại dưới để bắt đầu phóng tác.</p>
                 </div>
               ) : (
                 blocks.map((block) => (
@@ -572,7 +437,7 @@ function MuseContent() {
                     <button 
                       key={i} 
                       onClick={() => handleGenerate(sug)} 
-                      className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all hover:border-[#F43F5E]/30"
+                      className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full hover:border-[#F43F5E]/30"
                     >
                       {sug}
                     </button>
