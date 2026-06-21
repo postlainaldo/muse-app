@@ -520,4 +520,102 @@ function MuseContent() {
                     
                     <textarea
                       value={block.text}
-                      onChang
+                      onChange={(e) => handleUpdateBlockText(block.id, e.target.value)}
+                      onFocus={() => setIsEditorFocused(true)}
+                      onBlur={() => {
+                        setIsEditorFocused(false);
+                        saveToDrive();
+                      }}
+                      className="w-full bg-transparent text-[#E5E5EA] text-[15px] leading-relaxed font-serif border-none outline-none focus:ring-0 resize-none h-auto overflow-hidden"
+                      rows={Math.max(block.text.split("\n").length, 1)}
+                    />
+                  </div>
+                ))
+              )}
+
+              {loading && (
+                <div className="p-5 rounded-2xl border border-dashed border-rose-500/10 bg-[#121214]/10 flex items-center space-x-2 text-xs text-rose-300 font-mono">
+                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping"></span>
+                  <span>Model is writing...</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* Floating Prompt Bar */}
+      {activeTab === "editor" && (
+        <div className={promptBarClass}>
+          <div className="max-w-md mx-auto space-y-2.5">
+            
+            {/* Suggestions Container */}
+            <div className="bg-[#121214]/65 border border-appleBorder rounded-2xl p-2 backdrop-blur-xl">
+              <div className="flex justify-between items-center px-1 mb-1 text-[9px] tracking-wider text-zinc-500 uppercase">
+                <span>Gợi ý sáng tác động</span>
+                <div className="flex items-center space-x-1.5">
+                  <button onClick={() => handleGetSuggestions()} className="hover:text-rose-300 transition-colors">
+                    🔄 Đổi
+                  </button>
+                  <button 
+                    onClick={() => setIsSuggestionsCollapsed(!isSuggestionsCollapsed)} 
+                    className="p-0.5 text-zinc-500 hover:text-white transition-colors"
+                  >
+                    {isSuggestionsCollapsed ? "▲" : "▼"}
+                  </button>
+                </div>
+              </div>
+              
+              <div className={suggestionsContainerClass}>
+                <div className="flex gap-2 overflow-x-auto pb-0.5 no-scrollbar">
+                  {suggestions.map((sug, i) => (
+                    <button 
+                      key={i} 
+                      onClick={() => handleGenerate(sug)} 
+                      className="flex-shrink-0 bg-[#1C1C1E] text-zinc-300 border border-appleBorder text-xs px-3.5 py-1.5 rounded-full active:scale-95 transition-all hover:border-[#F43F5E]/30"
+                    >
+                      {sug}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            {/* Prompt Input Area */}
+            <div className="bg-[#121214]/90 border border-appleBorder rounded-2xl p-2 flex items-center space-x-2 backdrop-blur-xl">
+              <input
+                type="text"
+                placeholder="Nhập thoại gốc hoặc ý tưởng tiếp theo..."
+                className="flex-1 bg-transparent text-xs focus:outline-none text-white placeholder-zinc-600 px-2"
+                value={userPrompt}
+                onChange={(e) => setUserPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleGenerate();
+                  }
+                }}
+              />
+              <button onClick={() => handleGenerate()} className="bg-rose-400 text-black p-3 rounded-full hover:bg-rose-300 transition-all active:scale-95">
+                🚀
+              </button>
+            </div>
+            {saving && <p className="text-center text-[10px] text-zinc-500">Đang lưu giữ lên Drive...</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Tab Bar */}
+      <nav className={navBarClass}>
+        <button onClick={() => setActiveTab("editor")} className={activeTab === "editor" ? "text-rose-400 text-[10px]" : "text-zinc-500 text-[10px]"}>
+          ✍️ <span className="text-[10px]">Nhà sáng tác</span>
+        </button>
+        <button onClick={() => setActiveTab("library")} className={activeTab === "library" ? "text-rose-400 text-[10px]" : "text-zinc-500 text-[10px]"}>
+          📚 <span className="text-[10px]">Tủ sách</span>
+        </button>
+        <button onClick={() => setActiveTab("settings")} className={activeTab === "settings" ? "text-rose-400 text-[10px]" : "text-zinc-500 text-[10px]"}>
+          ⚙️ <span className="text-[10px]">Cấu hình</span>
+        </button>
+      </nav>
+    </div>
+  );
+}
